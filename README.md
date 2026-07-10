@@ -20,7 +20,7 @@ Goal of this architecture is to decouple compute, storage, data modeling, and AI
 | **Data Lake Storage** | Amazon S3 | **SeaweedFS** (S3-compatible) |
 | **Table Format** | S3 Iceberg Tables | **Apache Iceberg** |
 | **Query Engine** | Amazon Athena | **Trino / ClickHouse** |
-| **Semantic Layer** | Rosetta SDL (Neo4j) | **dbt + OpenMetadata** |
+| **Semantic Layer** | Rosetta SDL (Neo4j) | **WrenAI** |
 | **AI Orchestration**| Amazon Bedrock AgentCore | **Strands Framework + CLI** |
 | **LLM Execution** | Anthropic Claude (Cloud) | **Ollama** (`qwen2.5-coder:7b`) |
 
@@ -52,4 +52,4 @@ This lakehouse relies on three distinct types of data, processed through custom 
 * **[Lab 4: Agentic Analytics](lab4-agentic-analytics/README.md)**
   Builds the Strands + Ollama CLI loop to reason about and query the lakehouse.
 * **[Lab 5: Semantic Data Layer](lab5-semantic-data-layer/README.md)**
-  Implements OpenMetadata and dbt to provide the AI with governed, deterministic business metrics.
+  Implements WrenAI to provide the AI with a governed, deterministic Text-to-SQL semantic layer connecting ClickHouse and Iceberg.
