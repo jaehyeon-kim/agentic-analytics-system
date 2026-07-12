@@ -1,6 +1,6 @@
-# 🧠 Agentic Analytics Lakehouse
+# 🧠 Agentic Analytics System
 
-Welcome to Agentic Analytics Lakehouse project. This repository is a fully localized, open-source adaptation of the official [AWS Agentic Analytics Ready Lakehouse Workshop](https://catalog.workshops.aws/agentic-analytics-lakehouse/). 
+Welcome to the Agentic Analytics System project. This repository is a fully localized, open-source adaptation of the official [AWS Agentic Analytics Ready Lakehouse Workshop](https://catalog.workshops.aws/agentic-analytics-lakehouse/). 
 
 This project demonstrates how to build a production-grade, AI-driven data lakehouse on your local machine. It replaces proprietary AWS cloud services (Kinesis, Glue, Bedrock, Rosetta SDL) with best-in-class open-source alternatives managed by `odctl` and orchestrated by modern local AI frameworks.
 
@@ -22,6 +22,8 @@ Goal of this architecture is to decouple compute, storage, data modeling, and AI
 | **Query Engine** | Amazon Athena | **Trino / ClickHouse** |
 | **Semantic Layer** | Rosetta SDL (Neo4j) | **WrenAI** |
 | **AI Orchestration**| Amazon Bedrock AgentCore | **Strands Framework + CLI** |
+| **Agent Memory** | Bedrock Memory / Neo4j | **Mem0 (Native Graph)** |
+| **Vector Engine** | Amazon OpenSearch | **Qdrant** |
 | **LLM Execution** | Anthropic Claude (Cloud) | **Ollama** (`qwen2.5-coder:7b`) |
 
 *(Note: Local infrastructure services like Kafka, Flink, Postgres, Iceberg, and ClickHouse are seamlessly spun up and managed using **[odctl](../odctl)** CLI).*
@@ -41,15 +43,11 @@ This lakehouse relies on three distinct types of data, processed through custom 
 
 ---
 
-## 🔬 Labs Overview
+## 🔬 Modules Overview
 
-* **[Lab 1: Data Foundations](lab1-data-foundations/README.md)**
-  Focuses on setting up data generation and ingestion pipelines.
-* **[Lab 2: Query Your Data Lake](lab2-query-data-lake/README.md)**
-  Demonstrates federated querying using Trino.
-* **[Lab 3: Local MCP Analytics](lab3-mcp-analytics/README.md)**
-  Introduces Model Context Protocol (MCP) for local AI database access.
-* **[Lab 4: Agentic Analytics](lab4-agentic-analytics/README.md)**
-  Builds the Strands + Ollama CLI loop to reason about and query the lakehouse.
-* **[Lab 5: Semantic Data Layer](lab5-semantic-data-layer/README.md)**
-  Implements WrenAI to provide the AI with a governed, deterministic Text-to-SQL semantic layer connecting ClickHouse and Iceberg.
+* **[Module 1: The Lakehouse Foundation (Data Engineering)](module1-lakehouse-foundation/README.md)**
+  Build the data infrastructure (Kafka, Flink, Iceberg) and run baseline federated queries (Trino) to establish how data is analyzed prior to AI.
+* **[Module 2: The Semantic Engine (Data Modeling)](module2-semantic-engine/README.md)**
+  Implement WrenAI to provide the AI with a governed, deterministic Text-to-SQL semantic layer connecting ClickHouse and Iceberg.
+* **[Module 3: The Agentic Orchestrator (AI Engineering)](module3-agentic-orchestrator/README.md)**
+  Bring the AI orchestrator to life. Build the Strands loop, expose your semantic layer via MCP, and integrate Mem0 over Qdrant for context-aware multi-hop reasoning and routing.
