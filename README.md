@@ -1,53 +1,91 @@
-# 🧠 Agentic Analytics System
+# Agentic Analytics System
 
-Welcome to the Agentic Analytics System project. This repository is a fully localized, open-source adaptation of the official [AWS Agentic Analytics Ready Lakehouse Workshop](https://catalog.workshops.aws/agentic-analytics-lakehouse/). 
+## Motivation and Benefits
+Modern data ecosystems require systems that can autonomously reason about data, translate natural language into accurate queries, and maintain conversational context. However, tightly coupled, managed cloud AI services often struggle with complex business logic and create friction when integrating external databases. 
 
-This project demonstrates how to build a production-grade, AI-driven data lakehouse on your local machine. It replaces proprietary AWS cloud services (Kinesis, Glue, Bedrock, Rosetta SDL) with best-in-class open-source alternatives managed by `odctl` and orchestrated by modern local AI frameworks.
+This repository provides an open-source stack for building an Agentic Data System. 
 
----
+**Benefits:**
+* **Accuracy:** Deterministic SQL generation via a strict semantic layer prevents LLM hallucinations.
+* **Modularity:** Compute, storage, and AI orchestration are decoupled, preventing vendor lock-in.
+* **Contextual Awareness:** Native graph memory allows the system to retain temporal context and preferences.
 
-## 🏗️ Architecture & Philosophy
+## Architecture
 
-Goal of this architecture is to decouple compute, storage, data modeling, and AI orchestration. Instead of relying on closed cloud ecosystems, this stack utilizes modern open-source data ecosystem.
+This architecture updates and extends the concepts from the [AWS Agentic Analytics Ready Lakehouse Workshop](https://catalog.workshops.aws/agentic-analytics-lakehouse/en-US), replacing managed cloud services with robust open-source alternatives.
 
-### Stack Mapping
-| Component Role | Original AWS Stack | Local Open-Source Stack |
-| :--- | :--- | :--- |
-| **Data Generation** | AWS Lambda | **[dynamic-des](../dynamic-des)** |
-| **Relational DB** | Amazon Aurora MySQL | **PostgreSQL** |
-| **Streaming & CDC** | Kinesis Firehose / EventBridge | **Debezium + Apache Kafka** |
-| **Stream Processing** | AWS Glue (Spark) | **Apache Flink (SQL)** |
-| **Data Lake Storage** | Amazon S3 | **SeaweedFS** (S3-compatible) |
-| **Table Format** | S3 Iceberg Tables | **Apache Iceberg** |
-| **Query Engine** | Amazon Athena | **Trino / ClickHouse** |
-| **Semantic Layer** | Rosetta SDL (Neo4j) | **WrenAI** |
-| **AI Orchestration**| Amazon Bedrock AgentCore | **Strands Framework + CLI** |
-| **Agent Memory** | Bedrock Memory / Neo4j | **Mem0 (Native Graph)** |
-| **Vector Engine** | Amazon OpenSearch | **Qdrant** |
-| **LLM Execution** | Anthropic Claude (Cloud) | **Ollama** (`qwen2.5-coder:7b`) |
+```text
++-------------------+       +-----------------------+
+|                   |       |                       |
+|   User Request    | ----> |  Agent Orchestrator   |
+|                   |       |  (Strands SDK)        |
++-------------------+       +-----------------------+
+                                  |           |
+                                  |           v
+                                  |     +-------------------+
+                                  |     |   Agent Memory    |
+                                  |     |   (Mem0 v3)       |
+                                  |     +-------------------+
+                                  |           |
+                                  v           v
+                            +-----------------------+
+                            |                       |
+                            | Shared Vector Engine  |
+                            |       (Qdrant)        |
+                            |                       |
+                            +-----------------------+
+                                       |
+                                       v
+                            +-----------------------+
+                            |   Semantic Engine     |
+                            |       (WrenAI)        |
+                            +-----------------------+
+                                       |
+                                       v
+                            +-----------------------+
+                            |    Historical Data    |
+                            |   (Trino / Iceberg)   |
+                            +-----------------------+
+```
 
-*(Note: Local infrastructure services like Kafka, Flink, Postgres, Iceberg, and ClickHouse are seamlessly spun up and managed using **[odctl](../odctl)** CLI).*
+### Component Breakdown
+* **Strands SDK (Orchestrator):** The "brain" of the system. It runs the agent loop, decides which tools to use, and answers user questions.
+* **WrenAI (Semantic Engine):** The translator. It holds strict business rules (e.g., how to calculate "net revenue") and translates human questions into flawless SQL queries, preventing hallucinations.
+* **Mem0 v3 (Agent Memory):** The memory layer. It extracts and remembers facts and user preferences across conversations so the user doesn't have to repeat themselves.
+* **Qdrant (Vector Engine):** The semantic database. It stores the mathematical representations (vectors) of Mem0's memories and WrenAI's schemas.
+* **Amazon Athena / Trino / Iceberg (Historical Data):** The distributed batch engine for querying massive-scale lakehouse data.
 
----
+*(Note: Real-time data integration using Tinybird/ClickHouse and dynamic query routing between hot and cold storage are currently out of scope for this foundational phase, but the architecture is designed to be easily extended to support them in the future.)*
 
-## 🌊 Data Sources & Pipeline Flow
+## Query Flow
+1. **Context Check:** The orchestrator queries memory (running on the vector engine) to pull long-term preferences and context.
+2. **Semantic Translation:** The request is sent to the semantic engine, which maps the request to accurate SQL.
+3. **Execution:** The semantic engine directly executes the SQL against the Iceberg cold storage and returns the structured data.
 
-This lakehouse relies on three distinct types of data, processed through custom pipelines:
-
-1. **Database Data (Customer & Order Data):**
-   Relational data is generated by `dynamic-des` via a PostgreSQL egress and inserted directly into Postgres. **Debezium** captures these changes and streams them to **Kafka**, where **Flink SQL** processes and lands them into an **Iceberg** catalog on **SeaweedFS**.
-2. **Streaming Data (Payment Transactions):**
-   High-velocity synthetic payment telemetry is generated by `dynamic-des` and pushed directly to Kafka.
-3. **Unstructured Data (PDF Documents):**
-   Company policy PDFs are embedded into vector space and stored in ClickHouse for semantic similarity search, allowing AI agent to reference corporate policies.
-
----
+```text
+[User Request] 
+      │
+      ▼
+(1) Context Check
+[Strands Orchestrator] <---> [Mem0 / Qdrant]
+      │
+      ▼
+(2) Semantic Translation
+[WrenAI Athena/Trino Model]
+      │
+      ▼
+(3) Execution
+[Athena / Trino / Iceberg]
+      │
+      ▼
+[Structured Data]
+```
 
 ## 🔬 Modules Overview
 
 * **[Module 1: The Lakehouse Foundation (Data Engineering)](module1-lakehouse-foundation/README.md)**
-  Build the data infrastructure (Kafka, Flink, Iceberg) and run baseline federated queries (Trino) to establish how data is analyzed prior to AI.
+  Build the batch data infrastructure (generating unified Parquet files for customers, orders, and payments, then converting to Iceberg) and run baseline federated queries (Trino) to establish how data is analyzed prior to AI.
 * **[Module 2: The Semantic Engine (Data Modeling)](module2-semantic-engine/README.md)**
-  Implement WrenAI to provide the AI with a governed, deterministic Text-to-SQL semantic layer connecting ClickHouse and Iceberg.
+  Implement WrenAI to provide the AI with a governed, deterministic Text-to-SQL semantic layer connecting to Iceberg.
 * **[Module 3: The Agentic Orchestrator (AI Engineering)](module3-agentic-orchestrator/README.md)**
-  Bring the AI orchestrator to life. Build the Strands loop, expose your semantic layer via MCP, and integrate Mem0 over Qdrant for context-aware multi-hop reasoning and routing.
+  Bring the AI orchestrator to life. Build the Strands loop, expose your semantic layer via MCP, and integrate Mem0 over Qdrant for context-aware multi-hop reasoning.

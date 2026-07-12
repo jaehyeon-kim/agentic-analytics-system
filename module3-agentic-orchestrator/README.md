@@ -1,14 +1,14 @@
-# Lab 3: Local MCP Analytics
+# Module 3: Local MCP Analytics
 
-In this lab, you will connect the AI layer to your data lakehouse using the Model Context Protocol (MCP).
+In this module, you will connect the AI layer to your data lakehouse using the Model Context Protocol (MCP).
 
 ## Objectives
 - Write local Python tools using the MCP framework.
-- Expose your Trino and ClickHouse databases securely so an AI agent can execute queries against them.
+- Expose your Trino database securely so an AI agent can execute queries against it.
 
-# Lab 4: Agentic Analytics
+# Module 3 (Continued): Agentic Analytics
 
-In this lab, you will bring the AI orchestrator to life.
+In this module, you will bring the AI orchestrator to life.
 
 ## Objectives
 - Build a local Python CLI using the **Strands** framework.
@@ -16,6 +16,8 @@ In this lab, you will bring the AI orchestrator to life.
 - Enable the agent to autonomously reason about user questions, select the right database tools, and return data-driven answers.
 
 
-## Incorporating Mem0 & Routing
+## Incorporating Mem0
 
-This module also integrates Mem0 over Qdrant for context-aware multi-hop reasoning, using Strands to dynamically route queries between real-time (ClickHouse) and historical (Iceberg) databases.
+This module also integrates Mem0 over Qdrant for context-aware multi-hop reasoning.
+
+*(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
