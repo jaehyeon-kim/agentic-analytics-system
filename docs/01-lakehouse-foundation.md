@@ -14,7 +14,7 @@ We use the `odctl` package to manage our local data stack. This avoids the compl
    ```bash
    python3 -m venv .venv
    source .venv/bin/activate
-   pip install -r requirements.txt
+   pip install -r src/requirements.txt
    ```
 2. Initialize the Open Data Stack workspace and launch the core components (Trino, SeaweedFS, Iceberg Catalog):
    ```bash
@@ -27,7 +27,7 @@ We use `dynamic-des`, an event simulation framework, configured with a fast-forw
 
 Run the data generator (configured for 90 days of history and 50,000 events per Parquet file):
 ```bash
-python data-generator/generate_data.py --days 90 --batch_size 50000
+python src/data_pipeline/generate_data.py --days 90 --batch_size 50000
 ```
 
 ## ❄️ Step 3: Iceberg Integration
@@ -37,7 +37,7 @@ We can automate this process using the `pyiceberg` CLI sidecar container include
 
 Execute the ingestion script directly inside the running container:
 ```bash
-python data-generator/ingest_to_iceberg.py
+python src/data_pipeline/ingest_to_iceberg.py
 ```
 This script reads the raw data using PyArrow and writes formal Iceberg metadata via the REST Catalog, attaching semantic comments to each table to assist WrenAI in Module 2.
 
