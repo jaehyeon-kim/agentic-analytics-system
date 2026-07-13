@@ -4,4 +4,4 @@ wrenai[trino,memory,main]
 strands-agents
 strands-agents-tools
 mem0ai[nlp]
--e /Users/jaehyeon.kim/personal/odctl
+-e ../odctl

@@ -124,31 +124,29 @@ def init_project():
     os.makedirs("src/semantic_engine/.wren_project/knowledge/sql", exist_ok=True)
     
     yaml_lines = [
-        "schema_version: 2",
+        "schema_version: 5",
         "name: agentic-ecommerce",
         "data_source: trino"
     ]
     with open("src/semantic_engine/.wren_project/wren_project.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
-    logger.info("✅ Initialized WrenAI project (schema_version: 2).")
+    logger.info("✅ Initialized WrenAI project (schema_version: 5).")
     
     # Write relationships
-    yaml_lines = []
+    yaml_lines = ["relationships:"]
     for rel in RELATIONSHIPS:
         yaml_lines.extend([
-            "---",
-            "type: relationship",
-            f"name: {rel['name']}",
-            "models:",
-            f"  - {rel['models'][0]}",
-            f"  - {rel['models'][1]}",
-            f"join: \"{rel['join']}\"",
-            f"relationship_type: {rel['relationship_type']}"
+            f"  - name: {rel['name']}",
+            "    models:",
+            f"      - {rel['models'][0]}",
+            f"      - {rel['models'][1]}",
+            f"    join_type: {rel['relationship_type'].upper()}",
+            f"    condition: \"{rel['join']}\""
         ])
     
-    with open("src/semantic_engine/.wren_project/relationships/metadata.yml", "w") as f:
+    with open("src/semantic_engine/.wren_project/relationships.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
-    logger.info("✅ Created relationships/metadata.yml")
+    logger.info("✅ Created relationships.yml")
 
     # Write example knowledge rules
     with open("src/semantic_engine/.wren_project/knowledge/rules/business_definitions.md", "w") as f:
@@ -168,22 +166,37 @@ def add_model(table_name):
     os.makedirs(f"src/semantic_engine/.wren_project/models/{table_name}", exist_ok=True)
     
     meta = MODELS[table_name]
+    
+    # Extract primary keys for the model level
+    pk_cols = [col["name"] for col in meta["columns"] if col.get("is_primary_key")]
+    
     yaml_lines = [
-        "type: model",
-        f"name: {table_name}",
-        f"description: \"{meta['description']}\"",
+        f"name: {table_name}"
+    ]
+    
+    if pk_cols:
+        if len(pk_cols) == 1:
+            yaml_lines.append(f"primary_key: {pk_cols[0]}")
+        else:
+            pk_list = ", ".join(pk_cols)
+            yaml_lines.append(f"primary_key: [{pk_list}]")
+            
+    yaml_lines.extend([
+        "properties:",
+        f"  description: \"{meta['description']}\"",
         "table_reference:",
         "  catalog: iceberg",
         "  schema: ecommerce",
         f"  table: {table_name}",
         "columns:"
-    ]
+    ])
     
     for col in meta["columns"]:
         yaml_lines.append(f"  - name: {col['name']}")
         yaml_lines.append(f"    type: {col['type']}")
         if col.get("description"):
-            yaml_lines.append(f"    description: \"{col['description']}\"")
+            yaml_lines.append("    properties:")
+            yaml_lines.append(f"      description: \"{col['description']}\"")
         if col.get("is_primary_key"):
             yaml_lines.append("    is_primary_key: true")
             
@@ -219,8 +232,10 @@ def list_models():
 
 def build_context():
     """Compiles the WrenAI semantic context into the mdl.json manifest."""
-    logger.info("🧠 Compiling Semantic Context (Generating mdl.json manifest)...")
+    logger.info("🧠 Validating Semantic Context...")
     try:
+        subprocess.run(["wren", "context", "validate"], cwd="src/semantic_engine/.wren_project", check=True)
+        logger.info("🧠 Compiling Semantic Context (Generating mdl.json manifest)...")
         subprocess.run(["wren", "context", "build"], cwd="src/semantic_engine/.wren_project", check=True)
         logger.info("🎉 Semantic Engine compiled successfully! mdl.json is ready.")
     except FileNotFoundError:

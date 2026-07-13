@@ -28,7 +28,7 @@ By defining our business logic (e.g., "Net Revenue") using WrenAI's modern Model
 
 Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
 
-1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. The actual version-controlled source of truth lives securely in our `src/semantic_engine/models/` folder.
+1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
 2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: To prevent hallucinations due to schema drift (e.g., deleted or added columns), the agent is equipped to query live database metadata (like Trino's `information_schema.columns`) for the retrieved tables *before* executing the final SQL. This guarantees up-to-the-second accuracy.
 
 ### 🛡️ Implementation Considerations
@@ -85,24 +85,10 @@ volumes:
   - wren_memory:/app/src/semantic_engine/.wren_project/.wren/memory
 ```
 
-#### 2. Disaster Recovery (S3 / SeaweedFS)
-Do not back up the raw `.lance` directories. Instead, periodically export validated user queries to a durable YAML file and push it to object storage.
-```bash
-# Export only user-validated queries
-wren memory dump --source user --output queries.yml
+#### Production Query History Persistence
+For this fully disposable PoC, we intentionally do not persist query history between clean starts. Every environment starts fresh when running `init`, `add all`, `build`, and `index`. 
 
-# Sync to S3 backup
-aws s3 cp queries.yml s3://wren-memory/query-history/
-```
-
-#### 3. Restoration
-If the instance is lost, you can perfectly reconstruct the memory by pulling the backup and loading it back into Wren.
-```bash
-aws s3 cp s3://wren-memory/query-history/queries.yml .
-wren context build
-wren memory index
-wren memory load queries.yml
-```
+In a production environment, you should preserve user-approved examples outside of the ephemeral `.wren_project/` folder (e.g., in a version-controlled `src/semantic_engine/seed_knowledge/sql/` directory). During initialization, these markdown files are copied into `.wren_project/knowledge/sql/` so that the `index` command can automatically embed them as durable, canonical few-shot examples for the agent.
 
 ## 🚀 Managing the Semantic Engine
 
@@ -112,9 +98,21 @@ We have fully automated the lifecycle of the WrenAI Semantic Layer via a Managem
 
 Instead of manually typing arbitrary Wren CLI commands or handling one-off setup scripts, this CLI provides robust CRUD operations. It handles:
 
+### Verifying the Trino Profile
+
+WrenAI needs to know how to connect to the Lakehouse. The `odctl` orchestrator pre-configures this for you in the background. You can verify the Trino profile inside the semantic engine directory:
+
+```bash
+cd src/semantic_engine/.wren_project
+
+wren profile debug
+wren --sql "SELECT COUNT(*) FROM customers"
+```
+The profile should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema.
+
 ### Project Initialization (`init`)
 
-WrenAI requires a strict, version-controlled directory structure (schema version 2) to manage its semantic models. This command initializes the `.wren_project/` directory and generates a `wren_project.yml` file pointing to our Trino data source. By keeping the semantic logic decoupled from the database, we treat our business logic as code.
+WrenAI uses a generated project directory structure (schema version 5) to manage its semantic models. This command initializes the `.wren_project/` directory and generates a `wren_project.yml` file pointing to our Trino data source. By keeping the semantic logic decoupled from the database, we treat our business logic as code.
 
 ```bash
 python src/semantic_engine/manage_semantics.py init

@@ -31,11 +31,11 @@ python src/data_pipeline/generate_data.py --days 90 --batch_size 50000
 ```
 
 ## ❄️ Step 3: Iceberg Integration
-Now that the raw Parquet data exists in the `odctl-dev` bucket, we need to ingest it into the formal `warehouse` catalog as managed Iceberg tables.
+Now that the raw Parquet data exists in the `odctl-dev` bucket, we need to load it into the formal `warehouse` catalog as managed Iceberg tables.
 
-We can automate this process using the `pyiceberg` CLI sidecar container included in the `odctl` catalog profile.
+> **Note:** For this PoC, the pipeline script performs a destructive reload. It drops any existing tables and re-ingests the data from scratch, ensuring a clean slate.
 
-Execute the ingestion script directly inside the running container:
+Execute the script directly:
 ```bash
 python src/data_pipeline/run_pipeline.py
 ```
@@ -95,7 +95,7 @@ LIMIT 10;
 -- See the most recent orders placed
 SELECT * 
 FROM iceberg.ecommerce.orders 
-ORDER BY timestamp DESC 
+ORDER BY created_at DESC 
 LIMIT 10;
 ```
 

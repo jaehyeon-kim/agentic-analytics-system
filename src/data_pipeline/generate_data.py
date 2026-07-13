@@ -187,7 +187,7 @@ def run_simulation(args):
             
             payment = {
                 "type": "payment",
-                "transaction_id": f"txn-{int(time.time() * 1000)}-{random.randint(1000,9999)}",
+                "transaction_id": f"txn-{order_id:010d}",
                 "order_id": order_id,
                 "customer_id": customer["customer_id"],
                 "amount": round(total_amount, 2),

@@ -19,7 +19,7 @@ TABLE_DESCRIPTIONS = {
 
 def create_business_views():
     import trino
-    logger.info("Materializing business metrics as Trino Views in the Lakehouse...")
+    logger.info("Creating business metric views in Trino...")
     try:
         conn = trino.dbapi.connect(
             host='localhost',
@@ -82,14 +82,14 @@ def create_business_views():
             cur.execute(ddl)
             cur.fetchall()
             
-        logger.info("✅ All business views materialized successfully.")
+        logger.info("✅ All business views created successfully.")
     except Exception as e:
         logger.error(f"⚠️ Failed to create views: {e}")
 
 def main():
     import os
     
-    logger.info("Loading Iceberg REST Catalog...")
+    logger.info("Resetting and loading the generated Iceberg tables (Destructive Reload)...")
     catalog = load_catalog(
         "default",
         **{
