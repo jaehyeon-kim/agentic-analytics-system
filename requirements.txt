@@ -1,4 +1,6 @@
 dynamic-des[parquet]
-strands
-mem0ai
+pyiceberg[s3fs]
+strands-agents
+strands-agents-tools
+mem0ai[nlp]
 -e /Users/jaehyeon.kim/personal/odctl
