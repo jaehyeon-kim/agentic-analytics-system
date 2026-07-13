@@ -27,39 +27,36 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
                                   |     |   (Mem0 v3)       |
                                   |     +-------------------+
                                   |           |
-                                  v           v
-                            +-----------------------+
-                            |                       |
-                            | Shared Vector Engine  |
-                            |       (Qdrant)        |
-                            |                       |
-                            +-----------------------+
-                                       |
-                                       v
+                                  |           v
+                                  |     +-----------------------+
+                                  |     |   Agent Vector DB     |
+                                  |     |       (Qdrant)        |
+                                  |     +-----------------------+
+                                  v
                             +-----------------------+
                             |   Semantic Engine     |
                             |       (WrenAI)        |
                             +-----------------------+
-                                       |
-                                       v
-                            +-----------------------+
-                            |    Historical Data    |
-                            |   (Trino / Iceberg)   |
-                            +-----------------------+
+                               |                 |
+                               v                 v
+                 +-----------------------+   +-----------------------+
+                 |    Historical Data    |   |     MDL Memory        |
+                 |   (Trino / Iceberg)   |   | (LanceDB / SeaweedFS) |
+                 +-----------------------+   +-----------------------+
 ```
 
 ### Component Breakdown
 * **Strands SDK (Orchestrator):** The "brain" of the system. It runs the agent loop, decides which tools to use, and answers user questions.
-* **WrenAI (Semantic Engine):** The translator. It holds strict business rules (e.g., how to calculate "net revenue") and translates human questions into flawless SQL queries. It leverages a **hybrid RAG architecture**—using vector search for table discovery, combined with live schema validation to guarantee column accuracy and prevent hallucinations.
+* **WrenAI (Semantic Engine):** The translator. It holds strict business rules via its Modeling Definition Language (MDL) and translates human questions into flawless SQL queries. Its internal semantic memory runs on embedded **LanceDB** backed by **SeaweedFS**.
 * **Mem0 v3 (Agent Memory):** The memory layer. It extracts and remembers facts and user preferences across conversations so the user doesn't have to repeat themselves.
-* **Qdrant (Vector Engine):** The semantic database. It stores the mathematical representations (vectors) of Mem0's memories and WrenAI's schemas.
+* **Qdrant (Vector Engine):** The semantic database specifically powering the Mem0 agent layer, storing the mathematical representations (vectors) of user preferences and conversation histories.
 * **Amazon Athena / Trino / Iceberg (Historical Data):** The distributed batch engine for querying massive-scale lakehouse data.
 
 *(Note: Real-time data integration using Tinybird/ClickHouse and dynamic query routing between hot and cold storage are currently out of scope for this foundational phase, but the architecture is designed to be easily extended to support them in the future.)*
 
 ## Query Flow
-1. **Context Check:** The orchestrator queries memory (running on the vector engine) to pull long-term preferences and context.
-2. **Semantic Translation:** The request is sent to the semantic engine, which maps the request to accurate SQL.
+1. **Context Check:** The orchestrator queries Mem0 (running on Qdrant) to pull long-term preferences and context.
+2. **Semantic Translation:** The request is sent to the semantic engine, which uses its MDL and LanceDB memory to map the request to accurate SQL.
 3. **Execution:** The semantic engine directly executes the SQL against the Iceberg cold storage and returns the structured data.
 
 ```text
@@ -71,7 +68,7 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
       │
       ▼
 (2) Semantic Translation
-[WrenAI Athena/Trino Model]
+[WrenAI MDL] <---> [LanceDB / SeaweedFS]
       │
       ▼
 (3) Execution
