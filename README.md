@@ -39,10 +39,10 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
                             +-----------------------+
                                |                 |
                                v                 v
-                 +-----------------------+   +-----------------------+
-                 |    Historical Data    |   |     MDL Memory        |
-                 |   (Trino / Iceberg)   |   |    (Local LanceDB)    |
-                 +-----------------------+   +-----------------------+
+            +-----------------------+   +-------------------------------+
+            |    Historical Data    |   |    Semantic Retrieval Index   |
+            |   (Trino / Iceberg)   |   |        (Local LanceDB)        |
+            +-----------------------+   +-------------------------------+
 ```
 
 ### Component Breakdown

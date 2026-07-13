@@ -2,7 +2,6 @@ import argparse
 import logging
 import os
 import random
-import time
 from datetime import timedelta
 
 from dynamic_des import ParquetStorageEgress, SimulationContext
