@@ -6,7 +6,7 @@ Modern data ecosystems require systems that can autonomously reason about data, 
 This repository provides an open-source stack for building an Agentic Data System. 
 
 **Benefits:**
-* **Accuracy:** Deterministic SQL generation via a strict semantic layer prevents LLM hallucinations.
+* **Accuracy:** Improves text-to-SQL reliability by constraining generation with explicit semantic models, relationships, business definitions and query validation.
 * **Modularity:** Compute, storage, and AI orchestration are decoupled, preventing vendor lock-in.
 * **Contextual Awareness:** Native graph memory allows the system to retain temporal context and preferences.
 
@@ -52,7 +52,7 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
 * **User preference memory:** Mem0 over Qdrant.
 * **Query execution:** Wren → Trino → Iceberg.
 
-WrenAI provides governed SQL planning using explicit models, relationships, business definitions and validation, preventing LLM hallucinations.
+WrenAI provides governed SQL planning using explicit models, relationships, business definitions and validation.
 * **Qdrant (Vector Engine):** The semantic database specifically powering the Mem0 agent layer, storing the mathematical representations (vectors) of user preferences and conversation histories.
 * **Amazon Athena / Trino / Iceberg (Historical Data):** The distributed batch engine for querying massive-scale lakehouse data.
 

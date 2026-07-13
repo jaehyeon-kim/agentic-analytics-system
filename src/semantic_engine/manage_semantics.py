@@ -248,8 +248,9 @@ def build_context():
         logger.info("🧠 Compiling Semantic Context (Generating mdl.json manifest)...")
         subprocess.run(["wren", "context", "build"], cwd="src/semantic_engine/.wren_project", check=True)
         logger.info("🎉 Semantic Engine compiled successfully! mdl.json is ready.")
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found. Make sure you have activated your virtual environment.")
+        raise SystemExit(127) from exc
     except subprocess.CalledProcessError as exc:
         logger.error("⚠️ Failed to build the Wren context. Check your Trino connection and syntax.")
         raise SystemExit(exc.returncode) from exc
@@ -260,8 +261,9 @@ def index_memory():
     try:
         subprocess.run(["wren", "memory", "index"], cwd="src/semantic_engine/.wren_project", check=True)
         logger.info("🎉 Semantic memory successfully indexed locally.")
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found.")
+        raise SystemExit(127) from exc
     except subprocess.CalledProcessError as exc:
         logger.error("⚠️ Memory index build failed.")
         raise SystemExit(exc.returncode) from exc
@@ -271,8 +273,9 @@ def query_context(sql_query):
     logger.info(f"🔎 Executing Semantic Query: {sql_query}")
     try:
         subprocess.run(["wren", "--sql", sql_query], cwd="src/semantic_engine/.wren_project", check=True)
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found.")
+        raise SystemExit(127) from exc
     except subprocess.CalledProcessError as exc:
         logger.error("⚠️ Query execution failed.")
         raise SystemExit(exc.returncode) from exc

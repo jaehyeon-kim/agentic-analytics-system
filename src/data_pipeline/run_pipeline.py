@@ -88,6 +88,7 @@ def create_business_views():
         logger.info("✅ All business views created successfully.")
     except Exception as e:
         logger.error(f"⚠️ Failed to create views: {e}")
+        raise
 
 def main():
     import os
@@ -115,6 +116,7 @@ def main():
     )
 
     entities = ["customer", "product", "order", "order_item", "return", "payment"]
+    failures = []
 
     for entity in entities:
         table_name = f"{entity}s"
@@ -154,6 +156,10 @@ def main():
             
         except Exception as e:
             logger.error(f"  -> Skipped {table_name}: {repr(e)}")
+            failures.append(table_name)
+
+    if failures:
+        raise SystemExit(f"Failed to load tables: {', '.join(failures)}")
 
     # Execute view generation after base tables are loaded
     create_business_views()

@@ -28,16 +28,16 @@
     "expected_sql": "SELECT SUM(oi.quantity) FROM iceberg.ecommerce.order_items oi JOIN iceberg.ecommerce.products p ON oi.product_id = p.product_id WHERE p.category = 'Electronics'"
   },
   {
-    "question": "What is the average order value (total amount) for Gold loyalty tier customers?",
-    "expected_sql": "SELECT AVG(o.total_amount) FROM iceberg.ecommerce.orders o JOIN iceberg.ecommerce.customers c ON o.customer_id = c.customer_id WHERE c.loyalty_tier = 'Gold'"
+    "question": "What is the average order value (total amount) for Gold loyalty tier customers, excluding cancelled orders?",
+    "expected_sql": "SELECT AVG(o.total_amount) FROM iceberg.ecommerce.orders o JOIN iceberg.ecommerce.customers c ON o.customer_id = c.customer_id WHERE c.loyalty_tier = 'Gold' AND o.status != 'cancelled'"
   },
   {
     "question": "How many distinct products were sold yesterday?",
     "expected_sql": "SELECT COUNT(DISTINCT product_id) FROM iceberg.ecommerce.order_items WHERE CAST(created_at AS DATE) = current_date - interval '1' day"
   },
   {
-    "question": "What is the total refund amount for orders that are currently marked as cancelled?",
-    "expected_sql": "SELECT SUM(r.refund_amount) FROM iceberg.ecommerce.returns r JOIN iceberg.ecommerce.orders o ON r.order_id = o.order_id WHERE o.status = 'cancelled'"
+    "question": "What is the total processed refund amount for all delivered orders?",
+    "expected_sql": "SELECT SUM(r.refund_amount) FROM iceberg.ecommerce.returns r JOIN iceberg.ecommerce.orders o ON r.order_id = o.order_id WHERE o.status = 'delivered' AND r.return_status = 'processed'"
   },
   {
     "question": "What was our net revenue yesterday?",

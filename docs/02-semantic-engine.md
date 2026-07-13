@@ -22,7 +22,7 @@ WrenAI provides a **governed semantic compiler and execution boundary**. It does
 2. Plan physical SQL and apply business definitions.
 3. Validate and dry-run queries against the backend.
 
-By defining our business logic (e.g., "Net Revenue") using WrenAI's modern Modeling Definition Language (MDL schema version 2), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
+By defining our business logic (e.g., "Net Revenue") using WrenAI's modern Modeling Definition Language (MDL schema version 5), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
 
 ### 🏗️ Text-to-SQL Architecture & Validation
 
@@ -42,53 +42,15 @@ When building the agentic semantic layer, several practical safeguards must be e
 
 ### 💾 Production Persistence (Query History)
 
-WrenAI's local LanceDB memory contains two distinct datasets:
-1. `schema_items.lance`: Rebuildable vector embeddings of your MDL definitions.
-2. `query_history.lance`: Stateful, valuable history of learned NL→SQL pairs.
+The entire .wren_project directory is intentionally disposable.
 
-```text
-.wren/memory/
-└── memory
-    ├── __manifest
-    │   ├── _transactions
-    │   │   └── 0-b5e70e6b-2889-4848-ab2e-d2977c549911.txn
-    │   └── _versions
-    │       ├── 18446744073709551614.manifest
-    │       └── latest_version_hint.json
-    ├── query_history.lance
-    │   ├── _transactions
-    │   │   ├── 0-f3ea978f-9604-49f3-8e48-a9df86cfdedb.txn
-    │   │   ├── 1-056de8a8-9743-4c63-881b-b405ab7515da.txn
-    │   ├── _versions
-    │   │   ├── 18446744073709551590.manifest
-    │   │   ├── 18446744073709551591.manifest
-    │   │   └── latest_version_hint.json
-    │   └── data
-    │       ├── 0000101111010000000001113345d64cf09ccaafb742872b13.lance
-    │       ├── 000100001000010010101010fc8f9040ba9496d56528e2a8db.lance
-    └── schema_items.lance
-        ├── _transactions
-        │   └── 0-b6132636-6776-4454-90f8-01caf546be5f.txn
-        ├── _versions
-        │   ├── 18446744073709551614.manifest
-        │   └── latest_version_hint.json
-        └── data
-            └── 0111011110111001011100103f46024e49b56a250d77d23e43.lance
-```
+The local .wren/memory directory is a derived LanceDB index. It can
+optionally be mounted on a persistent volume to avoid rebuilding it
+after ordinary container restarts.
 
-Because WrenAI expects a local filesystem path, you cannot use a direct `s3://` URI for the live LanceDB database. To ensure ACID compliance and prevent data loss across restarts, use a two-layered persistence strategy:
-
-#### 1. Live Persistence (Docker Volume)
-Mount a local persistent volume to ensure the LanceDB files survive standard container restarts.
-```yaml
-volumes:
-  - wren_memory:/app/src/semantic_engine/.wren_project/.wren/memory
-```
-
-#### Production Query History Persistence
-For this fully disposable PoC, we intentionally do not persist query history between clean starts. Every environment starts fresh when running `init`, `add all`, `build`, and `index`. 
-
-In a production environment, you should preserve user-approved examples outside of the ephemeral `.wren_project/` folder (e.g., in a version-controlled `src/semantic_engine/seed_knowledge/sql/` directory). During initialization, these markdown files are copied into `.wren_project/knowledge/sql/` so that the `index` command can automatically embed them as durable, canonical few-shot examples for the agent.
+Approved Text-to-SQL examples are represented by knowledge/sql/*.md.
+For this PoC, those files are generated during project initialization
+and are also disposable.
 
 ## 🚀 Managing the Semantic Engine
 

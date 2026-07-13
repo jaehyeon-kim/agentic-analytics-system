@@ -138,13 +138,17 @@ def run_simulation(args):
             total_amount = 0
             order_date = (context.env.start_datetime + timedelta(seconds=context.env.now))
             
+            order_status = random.choice(["pending", "shipped", "delivered", "cancelled"])
+            
             for _ in range(num_items):
                 product = random.choice(product_pool)
                 quantity = random.randint(1, 3)
                 total_price = product["price"] * quantity
                 total_amount += total_price
                 
-                is_returned = random.random() < 0.1
+                is_returned = False
+                if order_status == "delivered":
+                    is_returned = random.random() < 0.1
                 
                 order_item = {
                     "type": "order_item",
@@ -180,22 +184,23 @@ def run_simulation(args):
                 "order_id": order_id,
                 "customer_id": customer["customer_id"],
                 "total_amount": round(total_amount, 2),
-                "status": random.choice(["pending", "shipped", "delivered", "cancelled"]),
+                "status": order_status,
                 "created_at": order_date
             }
             context.spawn(emit_event(order, context))
             
-            payment = {
-                "type": "payment",
-                "transaction_id": f"txn-{order_id:010d}",
-                "order_id": order_id,
-                "customer_id": customer["customer_id"],
-                "amount": round(total_amount, 2),
-                "merchant": "MainRetailer",
-                "created_at": order_date,
-                "transaction_type": "purchase"
-            }
-            context.spawn(emit_event(payment, context))
+            if order_status != "cancelled":
+                payment = {
+                    "type": "payment",
+                    "transaction_id": f"txn-{order_id:010d}",
+                    "order_id": order_id,
+                    "customer_id": customer["customer_id"],
+                    "amount": round(total_amount, 2),
+                    "merchant": "MainRetailer",
+                    "created_at": order_date,
+                    "transaction_type": "purchase"
+                }
+                context.spawn(emit_event(payment, context))
             
             order_id += 1
 
