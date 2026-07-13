@@ -49,6 +49,7 @@ def create_business_views():
                 FROM ecommerce.orders o
                 LEFT JOIN refunds_by_order r
                     ON o.order_id = r.order_id
+                WHERE o.status != 'cancelled'
                 GROUP BY 1
             """,
             "customer_lifetime_value": """
@@ -60,7 +61,7 @@ def create_business_views():
                     COUNT(DISTINCT o.order_id) as total_orders,
                     SUM(o.total_amount) as lifetime_spend
                 FROM ecommerce.customers c
-                LEFT JOIN ecommerce.orders o ON c.customer_id = o.customer_id
+                LEFT JOIN ecommerce.orders o ON c.customer_id = o.customer_id AND o.status != 'cancelled'
                 GROUP BY 1, 2, 3
             """,
             "product_performance": """
@@ -73,6 +74,8 @@ def create_business_views():
                     SUM(oi.total_price) as gross_sales
                 FROM ecommerce.products p
                 LEFT JOIN ecommerce.order_items oi ON p.product_id = oi.product_id
+                LEFT JOIN ecommerce.orders o ON oi.order_id = o.order_id
+                WHERE o.status != 'cancelled' OR o.status IS NULL
                 GROUP BY 1, 2, 3
             """
         }

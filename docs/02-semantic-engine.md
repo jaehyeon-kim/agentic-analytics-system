@@ -136,10 +136,22 @@ python src/semantic_engine/manage_semantics.py build
 
 ### Memory Indexing (`index`)
 
-If you have 500 tables, you cannot fit the entire schema into an LLM's context window. Wren solves this by building a local vector database using **LanceDB**. This command reads the table and column descriptions from your MDL files and embeds them. When the LLM orchestrator asks a question later, it uses this local index for Retrieval-Augmented Generation (RAG) to fetch *only* the relevant tables before attempting to generate SQL.
+If you have 500 tables, you cannot fit the entire schema into an LLM's context window. Wren solves this by building a local vector database using **LanceDB** to support **RAG-capable schema retrieval**. This command reads the table and column descriptions from your MDL files and embeds them. 
+
+Note that Wren defaults to full context rather than similarity search for smaller schemas (under ~30,000 characters). This is intentional because full context generally works better when it fits.
 
 ```bash
 python src/semantic_engine/manage_semantics.py index
+```
+
+To explicitly demonstrate embedding retrieval and force RAG behavior regardless of schema size, you can run a fetch with a low threshold:
+```bash
+cd src/semantic_engine/.wren_project
+
+wren memory fetch \
+  --query "net revenue and processed refunds" \
+  --threshold 1 \
+  --output json
 ```
 
 

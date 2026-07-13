@@ -41,14 +41,18 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
                                v                 v
                  +-----------------------+   +-----------------------+
                  |    Historical Data    |   |     MDL Memory        |
-                 |   (Trino / Iceberg)   |   | (LanceDB / SeaweedFS) |
+                 |   (Trino / Iceberg)   |   |    (Local LanceDB)    |
                  +-----------------------+   +-----------------------+
 ```
 
 ### Component Breakdown
-* **Strands SDK (Orchestrator):** The "brain" of the system. It runs the agent loop, decides which tools to use, and answers user questions.
-* **WrenAI (Semantic Engine):** The translator. It holds strict business rules via its Modeling Definition Language (MDL) and translates human questions into flawless SQL queries. Its internal semantic memory runs on embedded **LanceDB** backed by **SeaweedFS**.
-* **Mem0 v3 (Agent Memory):** The memory layer. It extracts and remembers facts and user preferences across conversations so the user doesn't have to repeat themselves.
+* **Wren semantic source:** Generated MDL models, relationships and knowledge files.
+* **Wren retrieval index:** Local LanceDB, optionally on a persistent volume.
+* **Natural-language interpretation:** Strands agent.
+* **User preference memory:** Mem0 over Qdrant.
+* **Query execution:** Wren → Trino → Iceberg.
+
+WrenAI provides governed SQL planning using explicit models, relationships, business definitions and validation, preventing LLM hallucinations.
 * **Qdrant (Vector Engine):** The semantic database specifically powering the Mem0 agent layer, storing the mathematical representations (vectors) of user preferences and conversation histories.
 * **Amazon Athena / Trino / Iceberg (Historical Data):** The distributed batch engine for querying massive-scale lakehouse data.
 
@@ -68,7 +72,7 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
       │
       ▼
 (2) Semantic Translation
-[WrenAI MDL] <---> [LanceDB / SeaweedFS]
+[WrenAI MDL] <---> [Local LanceDB]
       │
       ▼
 (3) Execution

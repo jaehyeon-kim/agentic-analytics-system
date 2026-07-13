@@ -76,12 +76,12 @@ MODELS = {
         ]
     },
     "daily_revenue": {
-        "description": "Business Metric (View): Aggregated daily net revenue.",
+        "description": "Daily aggregated revenue metrics based on the order creation date. Excludes cancelled orders.",
         "columns": [
-            {"name": "date", "type": "date", "description": "The calendar date of the aggregated metrics."},
-            {"name": "gross_revenue", "type": "double", "description": "Total revenue generated before any refunds are deducted."},
-            {"name": "total_refunds", "type": "double", "description": "Total amount refunded on this day."},
-            {"name": "net_revenue", "type": "double", "description": "Final realized revenue (gross_revenue - total_refunds). Use this for top-line revenue questions."}
+            {"name": "date", "type": "date", "description": "Calendar date the orders were placed."},
+            {"name": "gross_revenue", "type": "double", "description": "Gross order value for orders placed on this date."},
+            {"name": "total_refunds", "type": "double", "description": "Processed refunds associated with orders placed on this date, regardless of when the refund occurred."},
+            {"name": "net_revenue", "type": "double", "description": "Gross order value less eventual processed refunds for orders placed on this date."}
         ]
     },
     "customer_lifetime_value": {
@@ -116,12 +116,19 @@ RELATIONSHIPS = [
 ]
 
 def init_project():
-    """Initializes the modern schema_version 2 folder structure."""
-    os.makedirs("src/semantic_engine/.wren_project/models", exist_ok=True)
-    os.makedirs("src/semantic_engine/.wren_project/relationships", exist_ok=True)
-    os.makedirs("src/semantic_engine/.wren_project/views", exist_ok=True)
-    os.makedirs("src/semantic_engine/.wren_project/knowledge/rules", exist_ok=True)
-    os.makedirs("src/semantic_engine/.wren_project/knowledge/sql", exist_ok=True)
+    """Initializes the modern schema_version 5 folder structure with a clean slate."""
+    from pathlib import Path
+    import shutil
+
+    PROJECT_DIR = Path("src/semantic_engine/.wren_project")
+    if PROJECT_DIR.exists():
+        shutil.rmtree(PROJECT_DIR)
+
+    (PROJECT_DIR / "models").mkdir(parents=True)
+    (PROJECT_DIR / "views").mkdir(parents=True)
+    (PROJECT_DIR / "relationships").mkdir(parents=True)
+    (PROJECT_DIR / "knowledge" / "rules").mkdir(parents=True)
+    (PROJECT_DIR / "knowledge" / "sql").mkdir(parents=True)
     
     yaml_lines = [
         "schema_version: 5",
@@ -148,17 +155,20 @@ def init_project():
         f.write("\n".join(yaml_lines) + "\n")
     logger.info("✅ Created relationships.yml")
 
+    with open("src/semantic_engine/.wren_project/knowledge/knowledge.yml", "w") as f:
+        f.write("schema_version: 1\n")
+
     # Write example knowledge rules
     with open("src/semantic_engine/.wren_project/knowledge/rules/business_definitions.md", "w") as f:
         f.write("# Business Definitions\n\n## Active Customers\nAn active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n")
     
     with open("src/semantic_engine/.wren_project/knowledge/sql/top_customers.md", "w") as f:
-        f.write("# Top Customers Query\n\n**Question**: Who are our top 5 customers?\n\n**SQL**:\n```sql\nSELECT first_name, last_name, lifetime_spend\nFROM customer_lifetime_value\nORDER BY lifetime_spend DESC\nLIMIT 5\n```\n")
+        f.write("---\nnl: Who are our top 5 customers?\nsql: |\n  SELECT first_name, last_name, lifetime_spend\n  FROM customer_lifetime_value\n  ORDER BY lifetime_spend DESC\n  LIMIT 5\ndatasource: trino\nsource: user\n---\n")
     logger.info("✅ Created example knowledge definitions.")
 
 
 def add_model(table_name):
-    """Generates the MDL YAML for a specific table in the nested v2 structure."""
+    """Generates the MDL YAML for a specific table in the nested v5 structure."""
     if table_name not in MODELS:
         logger.error(f"❌ Table '{table_name}' definition not found in registry.")
         return
@@ -240,8 +250,9 @@ def build_context():
         logger.info("🎉 Semantic Engine compiled successfully! mdl.json is ready.")
     except FileNotFoundError:
         logger.error("⚠️ 'wren' CLI not found. Make sure you have activated your virtual environment.")
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as exc:
         logger.error("⚠️ Failed to build the Wren context. Check your Trino connection and syntax.")
+        raise SystemExit(exc.returncode) from exc
 
 def index_memory():
     """Builds the local .wren/memory retrieval index."""
@@ -251,8 +262,9 @@ def index_memory():
         logger.info("🎉 Semantic memory successfully indexed locally.")
     except FileNotFoundError:
         logger.error("⚠️ 'wren' CLI not found.")
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as exc:
         logger.error("⚠️ Memory index build failed.")
+        raise SystemExit(exc.returncode) from exc
 
 def query_context(sql_query):
     """Wraps the WrenAI SQL execution CLI."""
@@ -261,15 +273,16 @@ def query_context(sql_query):
         subprocess.run(["wren", "--sql", sql_query], cwd="src/semantic_engine/.wren_project", check=True)
     except FileNotFoundError:
         logger.error("⚠️ 'wren' CLI not found.")
-    except subprocess.CalledProcessError:
+    except subprocess.CalledProcessError as exc:
         logger.error("⚠️ Query execution failed.")
+        raise SystemExit(exc.returncode) from exc
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="WrenAI Semantic Engine Management CLI")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     # Init
-    subparsers.add_parser("init", help="Initialize the project with v2 schema")
+    subparsers.add_parser("init", help="Initialize the project with v5 schema")
     
     # Add
     parser_add = subparsers.add_parser("add", help="Add a table/view to the semantic layer")
