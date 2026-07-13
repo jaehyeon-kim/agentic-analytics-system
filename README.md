@@ -8,7 +8,7 @@ This repository provides an open-source stack for building an Agentic Data Syste
 **Benefits:**
 * **Accuracy:** Improves text-to-SQL reliability by constraining generation with explicit semantic models, relationships, business definitions and query validation.
 * **Modularity:** Compute, storage, and AI orchestration are decoupled, preventing vendor lock-in.
-* **Contextual Awareness:** Native graph memory allows the system to retain temporal context and preferences.
+* **Contextual Awareness:** Mem0 v3 provides built-in entity-linked graph memory over Qdrant, improving retrieval of related user preferences, people, events and conversational facts without requiring a separate graph database.
 
 ## Architecture
 

@@ -10,17 +10,21 @@ In this module, you will build the core batch data infrastructure for the Agenti
 ## 🛠️ Step 1: Launch the Infrastructure
 We use the `odctl` package to manage our local data stack. This avoids the complexity of manual `docker-compose` configurations.
 
-1. Create and activate a local virtual environment, then install the required dependencies:
-   ```bash
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -r src/requirements.txt
-   ```
-2. Initialize the Open Data Stack workspace and launch the core components (Trino, SeaweedFS, Iceberg Catalog):
-   ```bash
-   odctl init
-   odctl up trino storage catalog
-   ```
+Create and activate a local virtual environment using Python 3.12, then install the required dependencies. Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support (used in Module 3) does not yet provide wheels for Python 3.13+.
+
+```bash
+uv python install 3.12
+uv venv --python 3.12
+source .venv/bin/activate
+uv pip install -r src/requirements.txt
+```
+
+Next, initialize the Open Data Stack workspace and launch the core components (Trino, SeaweedFS, Iceberg Catalog).
+
+```bash
+odctl init
+odctl up trino storage catalog
+```
 
 ## 📊 Step 2: Generate the Historical Data
 We use `dynamic-des`, an event simulation framework, configured with a fast-forward clock (`factor=0.0`) to instantly simulate e-commerce activity. The data is exported as flattened Parquet files directly to the SeaweedFS bucket (`s3://odctl-dev/landing`).

@@ -33,7 +33,7 @@
   },
   {
     "question": "How many distinct products were sold yesterday?",
-    "expected_sql": "SELECT COUNT(DISTINCT product_id) FROM iceberg.ecommerce.order_items WHERE CAST(created_at AS DATE) = current_date - interval '1' day"
+    "expected_sql": "SELECT COUNT(DISTINCT oi.product_id) FROM iceberg.ecommerce.order_items oi JOIN iceberg.ecommerce.orders o ON oi.order_id = o.order_id WHERE CAST(oi.created_at AS DATE) = current_date - interval '1' day AND o.status != 'cancelled'"
   },
   {
     "question": "What is the total processed refund amount for all delivered orders?",
@@ -73,7 +73,7 @@
   },
   {
     "question": "Which loyalty tier generated the most net revenue over the last 30 days?",
-    "expected_sql": "WITH refunds_by_order AS ( SELECT order_id, SUM(refund_amount) AS refund_amount FROM iceberg.ecommerce.returns WHERE return_status = 'processed' GROUP BY order_id ) SELECT c.loyalty_tier, SUM(o.total_amount - COALESCE(r.refund_amount, 0)) AS net_rev FROM iceberg.ecommerce.orders o JOIN iceberg.ecommerce.customers c ON o.customer_id = c.customer_id LEFT JOIN refunds_by_order r ON o.order_id = r.order_id WHERE CAST(o.created_at AS DATE) >= current_date - INTERVAL '30' DAY GROUP BY c.loyalty_tier ORDER BY net_rev DESC LIMIT 1"
+    "expected_sql": "WITH refunds_by_order AS ( SELECT order_id, SUM(refund_amount) AS refund_amount FROM iceberg.ecommerce.returns WHERE return_status = 'processed' GROUP BY order_id ) SELECT c.loyalty_tier, SUM(o.total_amount - COALESCE(r.refund_amount, 0)) AS net_rev FROM iceberg.ecommerce.orders o JOIN iceberg.ecommerce.customers c ON o.customer_id = c.customer_id LEFT JOIN refunds_by_order r ON o.order_id = r.order_id WHERE CAST(o.created_at AS DATE) >= current_date - INTERVAL '30' DAY AND o.status != 'cancelled' GROUP BY c.loyalty_tier ORDER BY net_rev DESC LIMIT 1"
   },
   {
     "question": "How many Bronze tier customers have placed zero orders?",

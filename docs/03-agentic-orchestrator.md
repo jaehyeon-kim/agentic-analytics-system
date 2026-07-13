@@ -24,7 +24,7 @@ Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approa
 
 ## Incorporating Mem0
 
-This module also integrates Mem0 over Qdrant for context-aware multi-hop reasoning.
+This module integrates Mem0 v3 over Qdrant for long-term memory, entity-linked retrieval and improved cross-memory reasoning.
 
 *(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
 
