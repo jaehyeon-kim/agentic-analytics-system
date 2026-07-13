@@ -28,8 +28,8 @@ By defining our business logic (e.g., "Net Revenue") using WrenAI's Modeling Def
 
 Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
 
-1. **Table Discovery (RAG):** RAG (Retrieval-Augmented Generation) is used to index historical queries and table summaries. WrenAI uses its embedded **LanceDB** vector store (persisted robustly in **SeaweedFS**) to identify the exact tables relevant to the user's intent without stuffing the entire schema into the LLM context.
-2. **Schema Validation (Live Agent Tools):** To prevent hallucinations due to schema drift (e.g., deleted or added columns), the agent is equipped to query live database metadata (like Trino's `information_schema.columns`) for the retrieved tables *before* executing the final SQL. This guarantees up-to-the-second accuracy.
+1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG (Retrieval-Augmented Generation) is used to index historical queries and table summaries. WrenAI uses its embedded **LanceDB** vector store (persisted robustly in **SeaweedFS**) to identify the exact tables relevant to the user's intent without stuffing the entire schema into the LLM context.
+2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: To prevent hallucinations due to schema drift (e.g., deleted or added columns), the agent is equipped to query live database metadata (like Trino's `information_schema.columns`) for the retrieved tables *before* executing the final SQL. This guarantees up-to-the-second accuracy.
 
 ### 🛡️ Implementation Considerations
 
@@ -50,68 +50,38 @@ To measure the success of the Semantic Engine, we will evaluate it using methodo
 3. **Execute via Agent:** Pass the natural language questions through the Strands SDK Orchestrator and WrenAI pipeline.
 4. **Calculate Execution Accuracy (EX):** Execute both the generated SQL and the Ground Truth SQL against Trino. Compare the resulting data payloads. A perfect match of the output data (not just string matching the SQL query) counts as a success.
 
+**Test Suite Coverage ([`src/semantic_engine/golden_test_suite.json`](../src/semantic_engine/golden_test_suite.json)):**
+The evaluation suite consists of 25 rigorous test cases specifically designed to benchmark the AI's semantic reasoning capabilities:
+- **Raw Table Navigation:** Tests the AI's ability to execute complex 3+ table JOINs, subqueries, and aggregations across the foundational Lakehouse schemas (e.g. joining `orders`, `order_items`, and `products`).
+- **Semantic Routing:** Evaluates whether the AI correctly routes high-level business questions (e.g., "What was our net revenue?") to the pre-aggregated Lakehouse metric views (`daily_revenue`, `customer_lifetime_value`, `product_performance`) instead of attempting to blindly hallucinate raw schema calculations.
+- **Edge Cases:** Challenges the AI with NULL value tracking (`LEFT JOIN`), complex Date logic, and cross-layer queries (e.g. joining an aggregated metric view with a raw dimension table).
+
 ## 🚀 Step-by-Step Guide
 
-> **Prerequisite:** Ensure you have fully completed [Module 1](../module1-lakehouse-foundation/README.md) before starting. The `trino`, `storage`, and `catalog` containers must be running, and the Parquet data must be ingested into Iceberg.
+> **Prerequisite:** Ensure you have fully completed [Module 1](./01-lakehouse-foundation.md) before starting. The `odctl` infrastructure must be running, the Iceberg data must be generated, and your `.venv` must be active. The `wrenai` package is already installed via `src/requirements.txt`.
 
-### Step 1: Install WrenAI (Modern SDK Approach)
+### Step 1: Review the Semantic Engine Manager
 
-WrenAI has evolved from a heavy, multi-container Docker web app into a lightweight, deterministic Python SDK/CLI. This architecture allows seamless, native integration into our Python-based Agentic Analytics System.
+We have fully automated the lifecycle of the WrenAI Semantic Layer via a Management CLI suite (`src/semantic_engine/manage_semantics.py`). 
 
-1. Activate your local Python virtual environment (e.g., `source .venv/bin/activate`).
-2. Install the modern `wrenai` package with Trino connector and LanceDB memory extensions:
-   ```bash
-   pip install "wrenai[trino,memory,main]"
-   ```
+Instead of manually typing arbitrary Wren CLI commands or handling one-off setup scripts, this CLI provides robust CRUD operations. It handles:
+1. **Memory Configuration (`init`):** It dynamically generates the `wren_project.yml` with the Trino connection profile.
+2. **MDL Generation (`add`):** It generates strict Modeling Definition Language (MDL) YAML files (`models/`) that map the raw Iceberg tables *and* the aggregated business views generated in Module 1 to semantic business concepts, preventing AI hallucinations.
+3. **Context Compilation (`build`):** It natively compiles the semantic context embeddings into LanceDB.
 
-### Step 2: Initialize WrenAI and LanceDB Memory
+### Step 2: Deploy the Semantic Engine
 
-We use SeaweedFS as the robust S3-compatible backend for WrenAI's LanceDB memory.
-
-1. Ensure your core storage is running (this automatically provisions the `wrenai-memory` bucket):
-   ```bash
-   odctl up storage
-   ```
-2. Initialize your local WrenAI project workspace:
-   ```bash
-   mkdir -p wren-project && cd wren-project
-   wren context init
-   ```
-3. To configure WrenAI's embedded LanceDB memory to persist securely to SeaweedFS rather than local files, you can connect it using the `pyarrow` S3 interface in your Python scripts:
-   ```python
-   import lancedb
-
-   db = lancedb.connect(
-       "s3://wrenai-memory/lancedb_data",
-       storage_options={
-           "endpoint": "http://localhost:8333",
-           "access_key_id": "user",
-           "secret_access_key": "password" # Enforced by odctl infrastructure
-       }
-   )
-   ```
-
-### Step 3: Connect the Trino Data Source
-
-You can securely register your Trino Lakehouse using the Wren CLI. From within your `wren-project` directory, add the Trino profile:
+Execute the CLI commands from the root of the repository to bootstrap the engine:
 
 ```bash
-wren profile add trino
+# 1. Initialize the project profile
+python src/semantic_engine/manage_semantics.py init
+
+# 2. Add all predefined models to the semantic layer
+python src/semantic_engine/manage_semantics.py add all
+
+# 3. Compile the context (Vectorizing to LanceDB)
+python src/semantic_engine/manage_semantics.py build
 ```
 
-When prompted, input the standard `odctl` connection details:
-- **Host:** `localhost` (if running locally on Mac) or `trino` (if inside Docker)
-- **Port:** `8080`
-- **User:** `user`
-- **Password:** `password`
-- **Catalog:** `iceberg`
-- **Schema:** `ecommerce`
-
-Once the profile is added, associate it with the project and build the semantic context:
-
-```bash
-wren context set-profile trino
-wren context build
-```
-
-WrenAI is now fully configured natively in your agent environment, backed by robust object storage!
+Once the `build` step completes successfully, your local Agentic Analytics System is fully equipped with a deterministic, enterprise-grade semantic layer!

@@ -1,0 +1,102 @@
+[
+  {
+    "question": "What is the total number of customers?",
+    "expected_sql": "SELECT COUNT(*) FROM iceberg.ecommerce.customers"
+  },
+  {
+    "question": "Show me the top 5 customers by loyalty tier.",
+    "expected_sql": "SELECT loyalty_tier, COUNT(*) as count FROM iceberg.ecommerce.customers GROUP BY loyalty_tier ORDER BY count DESC LIMIT 5"
+  },
+  {
+    "question": "How many orders were cancelled?",
+    "expected_sql": "SELECT COUNT(*) FROM iceberg.ecommerce.orders WHERE status = 'cancelled'"
+  },
+  {
+    "question": "How many items were returned in total?",
+    "expected_sql": "SELECT COUNT(*) FROM iceberg.ecommerce.order_items WHERE is_returned = true"
+  },
+  {
+    "question": "List the total payment amount processed per merchant.",
+    "expected_sql": "SELECT merchant, SUM(amount) FROM iceberg.ecommerce.payments GROUP BY merchant"
+  },
+  {
+    "question": "What is the average stock quantity of our products?",
+    "expected_sql": "SELECT AVG(stock_quantity) FROM iceberg.ecommerce.products"
+  },
+  {
+    "question": "Find the total quantity of products ordered in the 'Electronics' category.",
+    "expected_sql": "SELECT SUM(oi.quantity) FROM iceberg.ecommerce.order_items oi JOIN iceberg.ecommerce.products p ON oi.product_id = p.product_id WHERE p.category = 'Electronics'"
+  },
+  {
+    "question": "What is the average order value (total amount) for Gold loyalty tier customers?",
+    "expected_sql": "SELECT AVG(o.total_amount) FROM iceberg.ecommerce.orders o JOIN iceberg.ecommerce.customers c ON o.customer_id = c.customer_id WHERE c.loyalty_tier = 'Gold'"
+  },
+  {
+    "question": "How many distinct products were sold yesterday?",
+    "expected_sql": "SELECT COUNT(DISTINCT product_id) FROM iceberg.ecommerce.order_items WHERE CAST(created_at AS DATE) = current_date - interval '1' day"
+  },
+  {
+    "question": "What is the total refund amount for orders that are currently marked as cancelled?",
+    "expected_sql": "SELECT SUM(r.refund_amount) FROM iceberg.ecommerce.returns r JOIN iceberg.ecommerce.orders o ON r.order_id = o.order_id WHERE o.status = 'cancelled'"
+  },
+  {
+    "question": "What was our net revenue yesterday?",
+    "expected_sql": "SELECT net_revenue FROM iceberg.ecommerce.daily_revenue WHERE date = current_date - interval '1' day"
+  },
+  {
+    "question": "Show me the gross revenue and total refunds for the last 7 days.",
+    "expected_sql": "SELECT date, gross_revenue, total_refunds FROM iceberg.ecommerce.daily_revenue WHERE date >= current_date - interval '7' day ORDER BY date ASC"
+  },
+  {
+    "question": "Who are our top 10 most valuable customers based on lifetime spend?",
+    "expected_sql": "SELECT first_name, last_name, lifetime_spend FROM iceberg.ecommerce.customer_lifetime_value ORDER BY lifetime_spend DESC LIMIT 10"
+  },
+  {
+    "question": "Which 5 customers have placed the most orders?",
+    "expected_sql": "SELECT first_name, last_name, total_orders FROM iceberg.ecommerce.customer_lifetime_value ORDER BY total_orders DESC LIMIT 5"
+  },
+  {
+    "question": "What is the best selling product in terms of units sold?",
+    "expected_sql": "SELECT product_name, units_sold FROM iceberg.ecommerce.product_performance ORDER BY units_sold DESC LIMIT 1"
+  },
+  {
+    "question": "Which product category generated the most gross sales?",
+    "expected_sql": "SELECT category, SUM(gross_sales) as total_category_sales FROM iceberg.ecommerce.product_performance GROUP BY category ORDER BY total_category_sales DESC LIMIT 1"
+  },
+  {
+    "question": "What is the average refund amount for returns that are fully processed?",
+    "expected_sql": "SELECT AVG(refund_amount) FROM iceberg.ecommerce.returns WHERE return_status = 'processed'"
+  },
+  {
+    "question": "Show the total gross sales for products that have less than 50 items in stock.",
+    "expected_sql": "SELECT SUM(pp.gross_sales) FROM iceberg.ecommerce.product_performance pp JOIN iceberg.ecommerce.products p ON pp.product_id = p.product_id WHERE p.stock_quantity < 50"
+  },
+  {
+    "question": "Which loyalty tier generated the most net revenue over the last 30 days?",
+    "expected_sql": "SELECT c.loyalty_tier, SUM(o.total_amount) - COALESCE(SUM(r.refund_amount), 0) as net_rev FROM iceberg.ecommerce.orders o JOIN iceberg.ecommerce.customers c ON o.customer_id = c.customer_id LEFT JOIN iceberg.ecommerce.returns r ON o.order_id = r.order_id WHERE CAST(o.created_at AS DATE) >= current_date - interval '30' day GROUP BY c.loyalty_tier ORDER BY net_rev DESC LIMIT 1"
+  },
+  {
+    "question": "How many Bronze tier customers have placed zero orders?",
+    "expected_sql": "SELECT COUNT(*) FROM iceberg.ecommerce.customers c LEFT JOIN iceberg.ecommerce.orders o ON c.customer_id = o.customer_id WHERE c.loyalty_tier = 'Bronze' AND o.order_id IS NULL"
+  },
+  {
+    "question": "What is the maximum number of units sold for any single product?",
+    "expected_sql": "SELECT MAX(units_sold) FROM iceberg.ecommerce.product_performance"
+  },
+  {
+    "question": "List all products that have never been sold.",
+    "expected_sql": "SELECT p.product_name FROM iceberg.ecommerce.products p LEFT JOIN iceberg.ecommerce.product_performance pp ON p.product_id = pp.product_id WHERE pp.units_sold IS NULL OR pp.units_sold = 0"
+  },
+  {
+    "question": "What percentage of orders end up being cancelled?",
+    "expected_sql": "SELECT CAST(COUNT(CASE WHEN status = 'cancelled' THEN 1 END) AS DOUBLE) / COUNT(*) * 100 FROM iceberg.ecommerce.orders"
+  },
+  {
+    "question": "Show the total lifetime spend of the 'Platinum' tier customer who joined most recently.",
+    "expected_sql": "SELECT clv.lifetime_spend FROM iceberg.ecommerce.customer_lifetime_value clv JOIN iceberg.ecommerce.customers c ON clv.customer_id = c.customer_id WHERE c.loyalty_tier = 'Platinum' ORDER BY c.created_at DESC LIMIT 1"
+  },
+  {
+    "question": "Which day of the week generates the highest average daily revenue?",
+    "expected_sql": "SELECT day_of_week(date) as dow, AVG(gross_revenue) FROM iceberg.ecommerce.daily_revenue GROUP BY 1 ORDER BY 2 DESC LIMIT 1"
+  }
+]
