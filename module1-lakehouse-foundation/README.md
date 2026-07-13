@@ -5,7 +5,7 @@ In this module, you will build the core batch data infrastructure for the Agenti
 ## Objectives
 - Use the `odctl` orchestrator to launch a local Lakehouse stack (Trino, Iceberg REST Catalog, SeaweedFS, WrenAI).
 - Use `dynamic-des` to instantly generate massive historical datasets (customers, products, orders, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
-- Ingest and register the raw Parquet files into the Iceberg catalog using Trino.
+- Ingest and register the raw Parquet files into the Iceberg catalog using PyIceberg.
 
 ## 🛠️ Step 1: Launch the Infrastructure
 We use the `odctl` package to manage our local data stack. This avoids the complexity of manual `docker-compose` configurations.
