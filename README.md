@@ -50,7 +50,7 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
 
 ### Component Breakdown
 * **Strands SDK (Orchestrator):** The "brain" of the system. It runs the agent loop, decides which tools to use, and answers user questions.
-* **WrenAI (Semantic Engine):** The translator. It holds strict business rules (e.g., how to calculate "net revenue") and translates human questions into flawless SQL queries, preventing hallucinations.
+* **WrenAI (Semantic Engine):** The translator. It holds strict business rules (e.g., how to calculate "net revenue") and translates human questions into flawless SQL queries. It leverages a **hybrid RAG architecture**—using vector search for table discovery, combined with live schema validation to guarantee column accuracy and prevent hallucinations.
 * **Mem0 v3 (Agent Memory):** The memory layer. It extracts and remembers facts and user preferences across conversations so the user doesn't have to repeat themselves.
 * **Qdrant (Vector Engine):** The semantic database. It stores the mathematical representations (vectors) of Mem0's memories and WrenAI's schemas.
 * **Amazon Athena / Trino / Iceberg (Historical Data):** The distributed batch engine for querying massive-scale lakehouse data.
