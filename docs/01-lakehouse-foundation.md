@@ -37,7 +37,7 @@ We can automate this process using the `pyiceberg` CLI sidecar container include
 
 Execute the ingestion script directly inside the running container:
 ```bash
-python src/data_pipeline/ingest_to_iceberg.py
+python src/data_pipeline/run_pipeline.py
 ```
 This script reads the raw data using PyArrow and writes formal Iceberg metadata via the REST Catalog, attaching semantic comments to each table to assist WrenAI in Module 2.
 

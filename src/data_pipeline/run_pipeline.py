@@ -17,6 +17,66 @@ TABLE_DESCRIPTIONS = {
     "payments": "Financial transaction logs for orders, tracking payment method, amount captured, and payment timestamp."
 }
 
+def create_business_views():
+    import trino
+    logger.info("Materializing business metrics as Trino Views in the Lakehouse...")
+    try:
+        conn = trino.dbapi.connect(
+            host='localhost',
+            port=8080,
+            user='user',
+            catalog='iceberg',
+            schema='ecommerce'
+        )
+        cur = conn.cursor()
+        
+        views = {
+            "daily_revenue": """
+                CREATE OR REPLACE VIEW ecommerce.daily_revenue AS
+                SELECT 
+                    CAST(o.created_at AS DATE) as date,
+                    SUM(o.total_amount) as gross_revenue,
+                    COALESCE(SUM(r.refund_amount), 0) as total_refunds,
+                    SUM(o.total_amount) - COALESCE(SUM(r.refund_amount), 0) as net_revenue
+                FROM ecommerce.orders o
+                LEFT JOIN ecommerce.returns r ON o.order_id = r.order_id
+                GROUP BY 1
+            """,
+            "customer_lifetime_value": """
+                CREATE OR REPLACE VIEW ecommerce.customer_lifetime_value AS
+                SELECT 
+                    c.customer_id,
+                    c.first_name,
+                    c.last_name,
+                    COUNT(DISTINCT o.order_id) as total_orders,
+                    SUM(o.total_amount) as lifetime_spend
+                FROM ecommerce.customers c
+                LEFT JOIN ecommerce.orders o ON c.customer_id = o.customer_id
+                GROUP BY 1, 2, 3
+            """,
+            "product_performance": """
+                CREATE OR REPLACE VIEW ecommerce.product_performance AS
+                SELECT 
+                    p.product_id,
+                    p.product_name,
+                    p.category,
+                    SUM(oi.quantity) as units_sold,
+                    SUM(oi.total_price) as gross_sales
+                FROM ecommerce.products p
+                LEFT JOIN ecommerce.order_items oi ON p.product_id = oi.product_id
+                GROUP BY 1, 2, 3
+            """
+        }
+
+        for view_name, ddl in views.items():
+            logger.info(f"  -> Creating view: {view_name}")
+            cur.execute(ddl)
+            cur.fetchall()
+            
+        logger.info("✅ All business views materialized successfully.")
+    except Exception as e:
+        logger.error(f"⚠️ Failed to create views: {e}")
+
 def main():
     import os
     
@@ -82,6 +142,9 @@ def main():
             
         except Exception as e:
             logger.error(f"  -> Skipped {table_name}: {repr(e)}")
+
+    # Execute view generation after base tables are loaded
+    create_business_views()
 
 if __name__ == "__main__":
     main()
