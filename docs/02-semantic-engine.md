@@ -40,6 +40,70 @@ When building the agentic semantic layer, several practical safeguards must be e
 * **Data Governance & Security:** The agent translates natural language into SQL and executes it on the user's behalf. It must not have "God Mode" access. We rely on **Trino's built-in access control** and Iceberg column-level security so that unauthorized queries (e.g., accessing PII) are rejected at the database level, and the agent can appropriately reply, "I don't have permission to view that data."
 * **Simplifying Complex JOINs with MDL:** Writing SQL that joins 5+ tables is a common failure point for LLMs. Instead of forcing the LLM to navigate the raw schema, we build predefined semantic models and relationships using **WrenAI's Modeling Definition Language (MDL)**. By mapping physical Iceberg tables to logical YAML models in the `src/semantic_engine/` directory, we flatten the schema and provide explicit business definitions that the LLM cannot hallucinate.
 
+### 💾 Production Persistence (Query History)
+
+WrenAI's local LanceDB memory contains two distinct datasets:
+1. `schema_items.lance`: Rebuildable vector embeddings of your MDL definitions.
+2. `query_history.lance`: Stateful, valuable history of learned NL→SQL pairs.
+
+```text
+.wren/memory/
+└── memory
+    ├── __manifest
+    │   ├── _transactions
+    │   │   └── 0-b5e70e6b-2889-4848-ab2e-d2977c549911.txn
+    │   └── _versions
+    │       ├── 18446744073709551614.manifest
+    │       └── latest_version_hint.json
+    ├── query_history.lance
+    │   ├── _transactions
+    │   │   ├── 0-f3ea978f-9604-49f3-8e48-a9df86cfdedb.txn
+    │   │   ├── 1-056de8a8-9743-4c63-881b-b405ab7515da.txn
+    │   ├── _versions
+    │   │   ├── 18446744073709551590.manifest
+    │   │   ├── 18446744073709551591.manifest
+    │   │   └── latest_version_hint.json
+    │   └── data
+    │       ├── 0000101111010000000001113345d64cf09ccaafb742872b13.lance
+    │       ├── 000100001000010010101010fc8f9040ba9496d56528e2a8db.lance
+    └── schema_items.lance
+        ├── _transactions
+        │   └── 0-b6132636-6776-4454-90f8-01caf546be5f.txn
+        ├── _versions
+        │   ├── 18446744073709551614.manifest
+        │   └── latest_version_hint.json
+        └── data
+            └── 0111011110111001011100103f46024e49b56a250d77d23e43.lance
+```
+
+Because WrenAI expects a local filesystem path, you cannot use a direct `s3://` URI for the live LanceDB database. To ensure ACID compliance and prevent data loss across restarts, use a two-layered persistence strategy:
+
+#### 1. Live Persistence (Docker Volume)
+Mount a local persistent volume to ensure the LanceDB files survive standard container restarts.
+```yaml
+volumes:
+  - wren_memory:/app/src/semantic_engine/.wren_project/.wren/memory
+```
+
+#### 2. Disaster Recovery (S3 / SeaweedFS)
+Do not back up the raw `.lance` directories. Instead, periodically export validated user queries to a durable YAML file and push it to object storage.
+```bash
+# Export only user-validated queries
+wren memory dump --source user --output queries.yml
+
+# Sync to S3 backup
+aws s3 cp queries.yml s3://wren-memory/query-history/
+```
+
+#### 3. Restoration
+If the instance is lost, you can perfectly reconstruct the memory by pulling the backup and loading it back into Wren.
+```bash
+aws s3 cp s3://wren-memory/query-history/queries.yml .
+wren context build
+wren memory index
+wren memory load queries.yml
+```
+
 ## 🚀 Managing the Semantic Engine
 
 > **Prerequisite:** Ensure you have fully completed [Module 1](./01-lakehouse-foundation.md) before starting. The `odctl` infrastructure must be running, the Iceberg data must be generated, and your `.venv` must be active. The `wrenai` package is already installed via `src/requirements.txt`.
@@ -50,7 +114,7 @@ Instead of manually typing arbitrary Wren CLI commands or handling one-off setup
 
 ### Project Initialization (`init`)
 
-It initializes the Wren V2 schema structure (`wren_project/`) and generates `wren_project.yml` pointing to the Trino data source.
+WrenAI requires a strict, version-controlled directory structure (schema version 2) to manage its semantic models. This command initializes the `.wren_project/` directory and generates a `wren_project.yml` file pointing to our Trino data source. By keeping the semantic logic decoupled from the database, we treat our business logic as code.
 
 ```bash
 python src/semantic_engine/manage_semantics.py init
@@ -58,7 +122,7 @@ python src/semantic_engine/manage_semantics.py init
 
 ### MDL Generation (`add`)
 
-It maps the raw Iceberg tables and aggregated business views to semantic business concepts, outputting them as strict Modeling Definition Language (MDL) YAML files alongside explicit relationships to prevent AI hallucinations.
+LLMs are notoriously bad at guessing complex SQL joins or understanding what a column like `status` means. Wren solves this using the Modeling Definition Language (MDL). This command maps our raw Iceberg tables and aggregated Trino views into semantic YAML files. It explicitly defines descriptions, primary keys, and exact one-to-many relationships (e.g., *exactly* how `customers` joins to `orders`). By doing this, we create a governed sandbox where the AI cannot hallucinate invalid join paths.
 
 ```bash
 python src/semantic_engine/manage_semantics.py add all
@@ -66,7 +130,7 @@ python src/semantic_engine/manage_semantics.py add all
 
 ### Context Compilation (`build`)
 
-It natively compiles the semantic YAML definitions into the `mdl.json` manifest required by the Wren engine.
+WrenAI doesn't read the scattered YAML files at runtime. Instead, this command natively compiles all the YAML definitions, relationships, and business rules into a single, highly optimized `mdl.json` manifest. The Wren execution engine uses this manifest to plan physical SQL queries deterministically.
 
 ```bash
 python src/semantic_engine/manage_semantics.py build
@@ -74,12 +138,10 @@ python src/semantic_engine/manage_semantics.py build
 
 ### Memory Indexing (`index`)
 
-It populates the local `.wren/memory` LanceDB retrieval index for use by the RAG orchestrator.
+If you have 500 tables, you cannot fit the entire schema into an LLM's context window. Wren solves this by building a local vector database using **LanceDB**. This command reads the table and column descriptions from your MDL files and embeds them. When the LLM orchestrator asks a question later, it uses this local index for Retrieval-Augmented Generation (RAG) to fetch *only* the relevant tables before attempting to generate SQL.
 
 ```bash
 python src/semantic_engine/manage_semantics.py index
 ```
-
-
 
 

@@ -1,5 +1,6 @@
 .ignore
 .odctl
+.wren_project
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

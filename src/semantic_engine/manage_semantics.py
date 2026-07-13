@@ -1,5 +1,4 @@
 import os
-import json
 import argparse
 import subprocess
 import logging
@@ -118,18 +117,18 @@ RELATIONSHIPS = [
 
 def init_project():
     """Initializes the modern schema_version 2 folder structure."""
-    os.makedirs("src/semantic_engine/models", exist_ok=True)
-    os.makedirs("src/semantic_engine/relationships", exist_ok=True)
-    os.makedirs("src/semantic_engine/views", exist_ok=True)
-    os.makedirs("src/semantic_engine/knowledge/rules", exist_ok=True)
-    os.makedirs("src/semantic_engine/knowledge/sql", exist_ok=True)
+    os.makedirs("src/semantic_engine/.wren_project/models", exist_ok=True)
+    os.makedirs("src/semantic_engine/.wren_project/relationships", exist_ok=True)
+    os.makedirs("src/semantic_engine/.wren_project/views", exist_ok=True)
+    os.makedirs("src/semantic_engine/.wren_project/knowledge/rules", exist_ok=True)
+    os.makedirs("src/semantic_engine/.wren_project/knowledge/sql", exist_ok=True)
     
     yaml_lines = [
         "schema_version: 2",
         "name: agentic-ecommerce",
         "data_source: trino"
     ]
-    with open("src/semantic_engine/wren_project.yml", "w") as f:
+    with open("src/semantic_engine/.wren_project/wren_project.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
     logger.info("✅ Initialized WrenAI project (schema_version: 2).")
     
@@ -147,9 +146,18 @@ def init_project():
             f"relationship_type: {rel['relationship_type']}"
         ])
     
-    with open("src/semantic_engine/relationships/metadata.yml", "w") as f:
+    with open("src/semantic_engine/.wren_project/relationships/metadata.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
     logger.info("✅ Created relationships/metadata.yml")
+
+    # Write example knowledge rules
+    with open("src/semantic_engine/.wren_project/knowledge/rules/business_definitions.md", "w") as f:
+        f.write("# Business Definitions\n\n## Active Customers\nAn active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n")
+    
+    with open("src/semantic_engine/.wren_project/knowledge/sql/top_customers.md", "w") as f:
+        f.write("# Top Customers Query\n\n**Question**: Who are our top 5 customers?\n\n**SQL**:\n```sql\nSELECT first_name, last_name, lifetime_spend\nFROM customer_lifetime_value\nORDER BY lifetime_spend DESC\nLIMIT 5\n```\n")
+    logger.info("✅ Created example knowledge definitions.")
+
 
 def add_model(table_name):
     """Generates the MDL YAML for a specific table in the nested v2 structure."""
@@ -157,7 +165,7 @@ def add_model(table_name):
         logger.error(f"❌ Table '{table_name}' definition not found in registry.")
         return
     
-    os.makedirs(f"src/semantic_engine/models/{table_name}", exist_ok=True)
+    os.makedirs(f"src/semantic_engine/.wren_project/models/{table_name}", exist_ok=True)
     
     meta = MODELS[table_name]
     yaml_lines = [
@@ -179,14 +187,14 @@ def add_model(table_name):
         if col.get("is_primary_key"):
             yaml_lines.append("    is_primary_key: true")
             
-    with open(f"src/semantic_engine/models/{table_name}/metadata.yml", "w") as f:
+    with open(f"src/semantic_engine/.wren_project/models/{table_name}/metadata.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
         
     logger.info(f"✅ Created model: models/{table_name}/metadata.yml")
 
 def remove_model(table_name):
     """Deletes an MDL YAML folder."""
-    path = f"src/semantic_engine/models/{table_name}"
+    path = f"src/semantic_engine/.wren_project/models/{table_name}"
     if os.path.exists(path):
         import shutil
         shutil.rmtree(path)
@@ -196,7 +204,7 @@ def remove_model(table_name):
 
 def list_models():
     """Lists all active models in the engine."""
-    path = "src/semantic_engine/models"
+    path = "src/semantic_engine/.wren_project/models"
     if not os.path.exists(path):
         logger.error("❌ Models directory does not exist. Run 'init' first.")
         return
@@ -213,7 +221,7 @@ def build_context():
     """Compiles the WrenAI semantic context into the mdl.json manifest."""
     logger.info("🧠 Compiling Semantic Context (Generating mdl.json manifest)...")
     try:
-        subprocess.run(["wren", "context", "build"], cwd="src/semantic_engine/wren_project", check=True)
+        subprocess.run(["wren", "context", "build"], cwd="src/semantic_engine/.wren_project", check=True)
         logger.info("🎉 Semantic Engine compiled successfully! mdl.json is ready.")
     except FileNotFoundError:
         logger.error("⚠️ 'wren' CLI not found. Make sure you have activated your virtual environment.")
@@ -224,7 +232,7 @@ def index_memory():
     """Builds the local .wren/memory retrieval index."""
     logger.info("🧠 Indexing Semantic Memory (Vectorizing to local .wren/memory)...")
     try:
-        subprocess.run(["wren", "memory", "index"], cwd="src/semantic_engine/wren_project", check=True)
+        subprocess.run(["wren", "memory", "index"], cwd="src/semantic_engine/.wren_project", check=True)
         logger.info("🎉 Semantic memory successfully indexed locally.")
     except FileNotFoundError:
         logger.error("⚠️ 'wren' CLI not found.")
@@ -235,7 +243,7 @@ def query_context(sql_query):
     """Wraps the WrenAI SQL execution CLI."""
     logger.info(f"🔎 Executing Semantic Query: {sql_query}")
     try:
-        subprocess.run(["wren", "--sql", sql_query], cwd="src/semantic_engine/wren_project", check=True)
+        subprocess.run(["wren", "--sql", sql_query], cwd="src/semantic_engine/.wren_project", check=True)
     except FileNotFoundError:
         logger.error("⚠️ 'wren' CLI not found.")
     except subprocess.CalledProcessError:
