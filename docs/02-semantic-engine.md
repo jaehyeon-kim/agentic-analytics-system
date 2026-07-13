@@ -17,18 +17,18 @@ This module solves this by introducing a purpose-built AI Semantic Layer:
 ### Text-to-SQL Engine: `WrenAI`
 Rather than letting the AI figure out complex joins, we use **WrenAI** as the central semantic brain. 
 
-WrenAI is an open-source (Apache 2.0) Agentic Analytics layer that connects natively to our Lakehouse:
-1. **Cold Layer:** Native connection to **Trino** to federate queries against our massive **Iceberg** catalog and S3 objects.
+WrenAI provides a **governed semantic compiler and execution boundary**. It does not autonomously handle natural-language ambiguity—that is the job of the Strands Agent in Module 3. Instead, Wren's responsibilities are:
+1. Resolve logical models and explicit relationships.
+2. Plan physical SQL and apply business definitions.
+3. Validate and dry-run queries against the backend.
 
-*(Note: Connecting to a hot layer like ClickHouse or Tinybird for real-time telemetry can be implemented as an extension.)*
-
-By defining our business logic (e.g., "Net Revenue") using WrenAI's Modeling Definition Language (MDL), our Strands AI agent simply queries the WrenAI API in natural language. WrenAI dynamically generates the mathematically correct SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
+By defining our business logic (e.g., "Net Revenue") using WrenAI's modern Modeling Definition Language (MDL schema version 2), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
 
 ### 🏗️ Text-to-SQL Architecture & Validation
 
 Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
 
-1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG (Retrieval-Augmented Generation) is used to index historical queries and table summaries. WrenAI uses its embedded **LanceDB** vector store (persisted robustly in **SeaweedFS**) to identify the exact tables relevant to the user's intent without stuffing the entire schema into the LLM context.
+1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. The actual version-controlled source of truth lives securely in our `src/semantic_engine/models/` folder.
 2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: To prevent hallucinations due to schema drift (e.g., deleted or added columns), the agent is equipped to query live database metadata (like Trino's `information_schema.columns`) for the retrieved tables *before* executing the final SQL. This guarantees up-to-the-second accuracy.
 
 ### 🛡️ Implementation Considerations
@@ -36,52 +36,50 @@ Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approa
 When building the agentic semantic layer, several practical safeguards must be established:
 
 * **Guardrails for "Runaway" Queries:** If the LLM hallucinates an unoptimized `CROSS JOIN` across large lakehouse tables, it can cause severe compute bottlenecks. The system must utilize **Trino Resource Groups** and strict query execution timeouts. If a query times out, the agent must be able to gracefully handle the error and attempt to rewrite it more efficiently (e.g., adding `LIMIT` or time-bounded `WHERE` clauses).
-* **Pragmatic Ambiguity Resolution:** Terms like "revenue" are ambiguous (Gross vs. Net vs. MRR). The orchestrator (Strands + Mem0) must be designed to ask the user clarifying questions when the semantic engine detects ambiguity. Once clarified, the agent saves the preference to its long-term memory (Qdrant) so it doesn't have to ask again.
+* **Pragmatic Ambiguity Resolution:** Terms like "revenue" are ambiguous. The orchestrator (Strands) handles ambiguity. Once clarified, conversational memory (Mem0 over Qdrant) stores the user's preferences (e.g. "I mean net revenue when I say revenue"). Note: Mem0 handles user context; WrenAI handles authoritative semantic truth.
 * **Data Governance & Security:** The agent translates natural language into SQL and executes it on the user's behalf. It must not have "God Mode" access. We rely on **Trino's built-in access control** and Iceberg column-level security so that unauthorized queries (e.g., accessing PII) are rejected at the database level, and the agent can appropriately reply, "I don't have permission to view that data."
 * **Simplifying Complex JOINs with MDL:** Writing SQL that joins 5+ tables is a common failure point for LLMs. Instead of forcing the LLM to navigate the raw schema, we build predefined semantic models and relationships using **WrenAI's Modeling Definition Language (MDL)**. By mapping physical Iceberg tables to logical YAML models in the `src/semantic_engine/` directory, we flatten the schema and provide explicit business definitions that the LLM cannot hallucinate.
 
-### 📊 Testing & Evaluation Plan
-
-To measure the success of the Semantic Engine, we will evaluate it using methodology inspired by industry benchmarks like [Spider](https://yale-lily.github.io/spider) and [BIRD](https://bird-bench.github.io/), focusing on **Execution Accuracy (EX)** over our internal E-commerce batch data.
-
-**Testing Methodology:**
-1. **Create a Golden Test Suite:** Develop a set of 20–50 natural language questions based on the batch data (e.g., *"What is the total revenue for users who bought more than 3 items?"*).
-2. **Define Ground Truth SQL:** Manually write and verify the exact, correct SQL query for each question to serve as the ground truth.
-3. **Execute via Agent:** Pass the natural language questions through the Strands SDK Orchestrator and WrenAI pipeline.
-4. **Calculate Execution Accuracy (EX):** Execute both the generated SQL and the Ground Truth SQL against Trino. Compare the resulting data payloads. A perfect match of the output data (not just string matching the SQL query) counts as a success.
-
-**Test Suite Coverage ([`src/semantic_engine/golden_test_suite.json`](../src/semantic_engine/golden_test_suite.json)):**
-The evaluation suite consists of 25 rigorous test cases specifically designed to benchmark the AI's semantic reasoning capabilities:
-- **Raw Table Navigation:** Tests the AI's ability to execute complex 3+ table JOINs, subqueries, and aggregations across the foundational Lakehouse schemas (e.g. joining `orders`, `order_items`, and `products`).
-- **Semantic Routing:** Evaluates whether the AI correctly routes high-level business questions (e.g., "What was our net revenue?") to the pre-aggregated Lakehouse metric views (`daily_revenue`, `customer_lifetime_value`, `product_performance`) instead of attempting to blindly hallucinate raw schema calculations.
-- **Edge Cases:** Challenges the AI with NULL value tracking (`LEFT JOIN`), complex Date logic, and cross-layer queries (e.g. joining an aggregated metric view with a raw dimension table).
-
-## 🚀 Step-by-Step Guide
+## 🚀 Managing the Semantic Engine
 
 > **Prerequisite:** Ensure you have fully completed [Module 1](./01-lakehouse-foundation.md) before starting. The `odctl` infrastructure must be running, the Iceberg data must be generated, and your `.venv` must be active. The `wrenai` package is already installed via `src/requirements.txt`.
-
-### Step 1: Review the Semantic Engine Manager
 
 We have fully automated the lifecycle of the WrenAI Semantic Layer via a Management CLI suite (`src/semantic_engine/manage_semantics.py`). 
 
 Instead of manually typing arbitrary Wren CLI commands or handling one-off setup scripts, this CLI provides robust CRUD operations. It handles:
-1. **Memory Configuration (`init`):** It dynamically generates the `wren_project.yml` with the Trino connection profile.
-2. **MDL Generation (`add`):** It generates strict Modeling Definition Language (MDL) YAML files (`models/`) that map the raw Iceberg tables *and* the aggregated business views generated in Module 1 to semantic business concepts, preventing AI hallucinations.
-3. **Context Compilation (`build`):** It natively compiles the semantic context embeddings into LanceDB.
 
-### Step 2: Deploy the Semantic Engine
+### Project Initialization (`init`)
 
-Execute the CLI commands from the root of the repository to bootstrap the engine:
+It initializes the Wren V2 schema structure (`wren_project/`) and generates `wren_project.yml` pointing to the Trino data source.
 
 ```bash
-# 1. Initialize the project profile
 python src/semantic_engine/manage_semantics.py init
+```
 
-# 2. Add all predefined models to the semantic layer
+### MDL Generation (`add`)
+
+It maps the raw Iceberg tables and aggregated business views to semantic business concepts, outputting them as strict Modeling Definition Language (MDL) YAML files alongside explicit relationships to prevent AI hallucinations.
+
+```bash
 python src/semantic_engine/manage_semantics.py add all
+```
 
-# 3. Compile the context (Vectorizing to LanceDB)
+### Context Compilation (`build`)
+
+It natively compiles the semantic YAML definitions into the `mdl.json` manifest required by the Wren engine.
+
+```bash
 python src/semantic_engine/manage_semantics.py build
 ```
 
-Once the `build` step completes successfully, your local Agentic Analytics System is fully equipped with a deterministic, enterprise-grade semantic layer!
+### Memory Indexing (`index`)
+
+It populates the local `.wren/memory` LanceDB retrieval index for use by the RAG orchestrator.
+
+```bash
+python src/semantic_engine/manage_semantics.py index
+```
+
+
+
+

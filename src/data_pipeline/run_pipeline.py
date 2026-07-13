@@ -33,13 +33,22 @@ def create_business_views():
         views = {
             "daily_revenue": """
                 CREATE OR REPLACE VIEW ecommerce.daily_revenue AS
-                SELECT 
-                    CAST(o.created_at AS DATE) as date,
-                    SUM(o.total_amount) as gross_revenue,
-                    COALESCE(SUM(r.refund_amount), 0) as total_refunds,
-                    SUM(o.total_amount) - COALESCE(SUM(r.refund_amount), 0) as net_revenue
+                WITH refunds_by_order AS (
+                    SELECT
+                        order_id,
+                        SUM(refund_amount) AS refund_amount
+                    FROM ecommerce.returns
+                    WHERE return_status = 'processed'
+                    GROUP BY order_id
+                )
+                SELECT
+                    CAST(o.created_at AS DATE) AS date,
+                    SUM(o.total_amount) AS gross_revenue,
+                    SUM(COALESCE(r.refund_amount, 0)) AS total_refunds,
+                    SUM(o.total_amount - COALESCE(r.refund_amount, 0)) AS net_revenue
                 FROM ecommerce.orders o
-                LEFT JOIN ecommerce.returns r ON o.order_id = r.order_id
+                LEFT JOIN refunds_by_order r
+                    ON o.order_id = r.order_id
                 GROUP BY 1
             """,
             "customer_lifetime_value": """
