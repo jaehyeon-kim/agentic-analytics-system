@@ -1,0 +1,4 @@
+dynamic-des[parquet]
+strands
+mem0ai
+-e /Users/jaehyeon.kim/personal/odctl
