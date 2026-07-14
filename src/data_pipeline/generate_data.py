@@ -113,7 +113,7 @@ def run_simulation(args):
                 "customer_id": customer_id,
                 "first_name": f"FirstName_{customer_id}",
                 "last_name": f"LastName_{customer_id}",
-                "loyalty_tier": random.choice(["Bronze", "Silver", "Gold", "Platinum"]),
+                "loyalty_tier": random.choices(["Bronze", "Silver", "Gold", "Platinum"], weights=[0.60, 0.25, 0.10, 0.05], k=1)[0],
                 "created_at": context.env.start_datetime + timedelta(seconds=context.env.now)
             }
             customer_pool.append(customer)
@@ -137,7 +137,7 @@ def run_simulation(args):
             total_amount = 0
             order_date = (context.env.start_datetime + timedelta(seconds=context.env.now))
             
-            order_status = random.choice(["pending", "shipped", "delivered", "cancelled"])
+            order_status = random.choices(["pending", "shipped", "delivered", "cancelled"], weights=[0.03, 0.10, 0.85, 0.02], k=1)[0]
             
             for _ in range(num_items):
                 product = random.choice(product_pool)
@@ -170,7 +170,7 @@ def run_simulation(args):
                         "customer_id": customer["customer_id"],
                         "product_id": product["product_id"],
                         "refund_amount": total_price,
-                        "return_status": random.choice(["pending", "processed", "rejected"]),
+                        "return_status": random.choices(["pending", "processed", "rejected"], weights=[0.15, 0.80, 0.05], k=1)[0],
                         "created_at": order_date + timedelta(days=random.randint(1, 14))
                     }
                     context.spawn(emit_event(ret, context))
