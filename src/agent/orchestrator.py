@@ -1,26 +1,21 @@
 import os
 import sys
 import asyncio
-import logging
 from dotenv import load_dotenv
 
 from strands import Agent
 from strands.models.litellm import LiteLLMModel
 from strands.tools.mcp.mcp_client import MCPClient
 
-# Configure logging
-logging.basicConfig(level=logging.INFO, format="%(levelname)s: %(message)s")
-logger = logging.getLogger(__name__)
-
 async def main():
     # Load environment variables from .env if present
     load_dotenv()
     
     agent_model = os.environ.get("AGENT_MODEL", "your-agent-model")
-    logger.info(f"🚀 Initializing Strands Orchestrator with Model: {agent_model}")
+    print(f"🚀 Initializing Strands Orchestrator with Model: {agent_model}")
     
     # 1. Initialize the LLM neutrally
-    llm = LiteLLMModel(model=agent_model)
+    llm = LiteLLMModel(model_id=agent_model)
     
     # 2. Configure MCP to spawn WrenAI semantic server
     base_dir = os.path.dirname(os.path.abspath(__file__))
@@ -42,14 +37,14 @@ async def main():
         }
     }
     
-    logger.info(f"🔌 Connecting to WrenAI MCP Server at {wren_home}...")
+    print(f"🔌 Connecting to WrenAI MCP Server at {wren_home}...")
     
     try:
         # Load the MCP client natively using the Strands SDK
         mcp_clients = MCPClient.load_servers(mcp_config)
     except Exception as e:
-        logger.error(f"❌ Failed to connect to MCP Server: {e}")
-        logger.error("Make sure 'wren' is installed and WREN_HOME is correct.")
+        print(f"❌ Failed to connect to MCP Server: {e}")
+        print("Make sure 'wren' is installed and WREN_HOME is correct.")
         sys.exit(1)
     
     # 3. Build the Agent
@@ -68,7 +63,7 @@ You have access to the WrenAI semantic layer via MCP tools.
         system_prompt=system_prompt
     )
     
-    logger.info("🧠 Orchestrator is online. Type 'exit' or 'quit' to close.\n")
+    print("🧠 Orchestrator is online. Type 'exit' or 'quit' to close.\n")
     
     # 4. Interactive Loop
     while True:
@@ -79,7 +74,7 @@ You have access to the WrenAI semantic layer via MCP tools.
             if not user_input.strip():
                 continue
             
-            logger.info("Agent is thinking...")
+            print("Agent ❯ Thinking...")
             response = await agent.invoke_async(user_input)
             
             # Extract text from the message content blocks
@@ -91,10 +86,10 @@ You have access to the WrenAI semantic layer via MCP tools.
             print(f"Agent ❯ {final_text}\n")
             
         except KeyboardInterrupt:
-            logger.info("Exiting...")
+            print("\nExiting...")
             break
         except Exception as e:
-            logger.error(f"⚠️ Error: {e}")
+            print(f"⚠️ Error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
