@@ -82,10 +82,10 @@ CUBES = {
         "base_object": "orders",
         "description": "Daily aggregated revenue metrics based on the order creation date.",
         "time_dimensions": [
-            {"name": "order_date", "column": "created_at"}
+            {"name": "order_date", "expression": "created_at"}
         ],
         "dimensions": [
-            {"name": "status", "column": "status"}
+            {"name": "status", "expression": "status"}
         ],
         "measures": [
             {"name": "gross_revenue", "expression": "SUM(total_amount)", "type": "DOUBLE"},
@@ -96,8 +96,8 @@ CUBES = {
         "base_object": "customers",
         "description": "Aggregated lifetime spend and order count per customer.",
         "dimensions": [
-            {"name": "customer_id", "column": "customer_id"},
-            {"name": "loyalty_tier", "column": "loyalty_tier"}
+            {"name": "customer_id", "expression": "customer_id"},
+            {"name": "loyalty_tier", "expression": "loyalty_tier"}
         ],
         "measures": [
             {"name": "total_orders", "expression": "COUNT(orders.order_id)", "type": "BIGINT"},
@@ -108,8 +108,8 @@ CUBES = {
         "base_object": "products",
         "description": "Aggregated product sales performance.",
         "dimensions": [
-            {"name": "product_id", "column": "product_id"},
-            {"name": "category", "column": "category"}
+            {"name": "product_id", "expression": "product_id"},
+            {"name": "category", "expression": "category"}
         ],
         "measures": [
             {"name": "units_sold", "expression": "SUM(order_items.quantity)", "type": "BIGINT"},
@@ -265,13 +265,13 @@ def add_cube(cube_name):
         yaml_lines.append("dimensions:")
         for dim in meta["dimensions"]:
             yaml_lines.append(f"  - name: {dim['name']}")
-            yaml_lines.append(f"    column: {dim['column']}")
+            yaml_lines.append(f"    expression: {dim['expression']}")
             
     if "time_dimensions" in meta:
         yaml_lines.append("time_dimensions:")
         for tdim in meta["time_dimensions"]:
             yaml_lines.append(f"  - name: {tdim['name']}")
-            yaml_lines.append(f"    column: {tdim['column']}")
+            yaml_lines.append(f"    expression: {tdim['expression']}")
             
     if "measures" in meta:
         yaml_lines.append("measures:")
