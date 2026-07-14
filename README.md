@@ -1,5 +1,7 @@
 # Agentic Analytics System
 
+A local, open-source stack for building context-aware, text-to-SQL AI agents over an Iceberg Lakehouse.
+
 ## Motivation and Benefits
 
 Modern data ecosystems require systems that can autonomously reason about data, translate natural language into accurate queries, and maintain conversational context. However, tightly coupled, managed cloud AI services often struggle with complex business logic and create friction when integrating external databases.
@@ -10,6 +12,15 @@ This repository provides an open-source stack for building an Agentic Data Syste
 * **Accuracy:** Improves text-to-SQL reliability by constraining generation with explicit semantic models, relationships, business definitions and query validation.
 * **Modularity:** Compute, storage, and AI orchestration are decoupled, preventing vendor lock-in.
 * **Contextual Awareness:** Mem0 v3 provides built-in entity-linked graph memory over Qdrant, improving retrieval of related user preferences, people, events and conversational facts without requiring a separate graph database.
+
+## Table of Contents
+
+- [Architecture](#architecture)
+- [Query Flow](#query-flow)
+- [Prerequisites](#prerequisites)
+- [Module 1: Lakehouse Foundation](#module-1-lakehouse-foundation)
+- [Module 2: Semantic Engine](#module-2-semantic-engine)
+- [Module 3: Agentic Orchestrator](#module-3-agentic-orchestrator)
 
 ## Architecture
 
@@ -63,7 +74,7 @@ WrenAI provides governed SQL planning using explicit models, relationships, busi
 
 1. **Context Check:** The orchestrator queries Mem0 (running on Qdrant) to pull long-term preferences and context.
 2. **Semantic Translation:** The request is sent to the semantic engine, which uses its MDL and LanceDB memory to map the request to accurate SQL.
-3. **Execution:** The semantic engine directly executes the SQL against the Iceberg cold storage and returns the structured data.
+3. **Validation & Execution:** The orchestrator agent validates the physical schema against live metadata before executing the final SQL against the Iceberg cold storage and returning the structured data.
 
 ```text
 [User Request]
@@ -88,7 +99,7 @@ WrenAI provides governed SQL planning using explicit models, relationships, busi
 
 ## Prerequisites
 
-Create and activate a local virtual environment using Python 3.12, then install the required dependencies. Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support (used in Module 3) does not yet provide wheels for Python 3.13+.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and [Ollama](https://ollama.com/), then create and activate a local virtual environment using Python 3.12, and install the required dependencies (which includes the `odctl` orchestrator). Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support (used in Module 3) does not yet provide wheels for Python 3.13+.
 
 ```bash
 uv python install 3.12
@@ -252,12 +263,7 @@ WrenAI provides a **governed semantic compiler and execution boundary**. It does
 
 By defining our business logic (e.g., "Net Revenue") using WrenAI's modern [Modeling Definition Language](https://docs.getwren.ai/oss/concepts/what_is_mdl) (MDL schema version 5), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
 
-### 🏗️ Text-to-SQL Architecture & Validation
 
-Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
-
-1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
-2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: The Strands agent can query live database metadata (like Trino's `information_schema.columns`) to confirm that the physical columns referenced by the MDL still exist. This acts as a structural complement to the MDL — the MDL remains the authoritative source for semantic descriptions and business definitions, while `information_schema` validates that the underlying physical schema has not drifted.
 
 ### 🛡️ Implementation Considerations
 
@@ -371,11 +377,22 @@ In this module, you will bring the AI orchestrator to life by connecting it to y
 - Connect Strands to a local **Ollama** LLM (e.g., `qwen2.5-coder:7b`).
 - Enable the agent to autonomously reason about user questions, select the right database tools, and return data-driven answers.
 
+### 🏗️ Text-to-SQL Architecture & Validation
+
+Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
+
+1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
+2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: The Strands agent can query live database metadata (like Trino's `information_schema.columns`) to confirm that the physical columns referenced by the MDL still exist. This acts as a structural complement to the MDL — the MDL remains the authoritative source for semantic descriptions and business definitions, while `information_schema` validates that the underlying physical schema has not drifted.
+
 ### Incorporating Mem0
 
 This module integrates Mem0 v3 over Qdrant for long-term memory, entity-linked retrieval and improved cross-memory reasoning.
 
 *(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
+
+### 🚀 Running the Agent (Coming Soon)
+
+*(The agent execution entry point will be added here once Module 3 is complete.)*
 
 ### 📊 Testing & Evaluation Plan
 
