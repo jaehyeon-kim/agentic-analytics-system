@@ -87,20 +87,11 @@ You have access to the WrenAI semantic layer via MCP tools.
                 continue
             
             logger.info("Agent is thinking...")
+            
+            # The agent's default callback handler streams the text automatically!
+            # We just await the invocation, then print a newline for clean formatting.
             response = await agent.invoke_async(user_input)
-            
-            # Handle both dictionary and object formats for response.message
-            msg = response.message
-            content_blocks = msg.get("content", []) if isinstance(msg, dict) else getattr(msg, "content", [])
-            
-            final_text = ""
-            for block in content_blocks:
-                if isinstance(block, dict) and "text" in block:
-                    final_text += block["text"]
-                elif hasattr(block, "text"):
-                    final_text += block.text
-            
-            print(f"Agent ❯ {final_text}\n")
+            print("\n")
             
         except KeyboardInterrupt:
             logger.info("Exiting...")
