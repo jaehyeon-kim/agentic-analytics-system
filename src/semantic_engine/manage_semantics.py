@@ -164,11 +164,11 @@ def init_project():
         "    user: user",
         "active: trino_local"
     ]
-    with open("src/semantic_engine/profiles.yml", "w") as f:
+    with open("src/semantic_engine/.wren_project/profiles.yml", "w") as f:
         f.write("\n".join(profile_lines) + "\n")
         
     logger.info("✅ Initialized empty MDL v5 project at src/semantic_engine/.wren_project")
-    logger.info("✅ Generated local profiles.yml at src/semantic_engine/profiles.yml")
+    logger.info("✅ Generated local profiles.yml at src/semantic_engine/.wren_project/profiles.yml")
     
     # Write relationships
     yaml_lines = ["relationships:"]

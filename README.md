@@ -105,7 +105,6 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and [Ollam
 uv python install 3.12
 uv venv --python 3.12
 source .venv/bin/activate
-export WREN_HOME=$(pwd)/src/semantic_engine
 uv pip install -r src/requirements.txt
 ```
 
@@ -142,7 +141,7 @@ Run the data generator (configured for 90 days of history and 50,000 events per 
 python src/data_pipeline/generate_data.py --days 90 --batch_size 50000
 ```
 
-TODO: Object storage (SeeweedFS) can be accessed at [http://localhost:8889](http://localhost:8889).
+> **Tip:** Object storage (SeaweedFS) can be accessed at [http://localhost:8889](http://localhost:8889).
 
 ### ❄️ Step 3: Iceberg Integration
 
@@ -298,8 +297,8 @@ Instead of manually typing arbitrary Wren CLI commands or handling one-off setup
 WrenAI uses a generated project directory structure (schema version 5) to manage its semantic models. This command initializes the `.wren_project/` directory and generates a `wren_project.yml` file pointing to our Trino data source. By keeping the semantic logic decoupled from the database, we treat our business logic as code.
 
 ```bash
-# TODO: show why it is necessary. This part is taken from manage_semantics.py as well
-export WREN_PROJECT_HOME=$(pwd)/src/semantic_engine
+# We must export WREN_HOME to ensure Wren AI uses the localized profiles.yml inside our project
+export WREN_HOME=$(pwd)/src/semantic_engine/.wren_project
 
 python src/semantic_engine/manage_semantics.py init
 ```
@@ -309,7 +308,7 @@ python src/semantic_engine/manage_semantics.py init
 <details>
 <summary>MDL Generation (<code>add</code>)</summary>
 
-LLMs are notoriously bad at guessing complex SQL joins or understanding what a column like `status` means. Wren solves this using the Modeling Definition Language (MDL). This command maps our raw Iceberg tables and aggregated Trino views into semantic YAML files. It explicitly defines descriptions, primary keys, and exact one-to-many relationships (e.g., *exactly* how `customers` joins to `orders`). By doing this, we create a governed sandbox where the AI cannot hallucinate invalid join paths.
+LLMs are notoriously bad at guessing complex SQL joins or understanding what a column like `status` means. Wren solves this using the Modeling Definition Language (MDL). This command maps our raw Iceberg tables into semantic YAML files and explicitly defines business metrics as Cubes. It explicitly defines descriptions, primary keys, and exact one-to-many relationships (e.g., *exactly* how `customers` joins to `orders`). By doing this, we create a governed sandbox where the AI cannot hallucinate invalid join paths.
 
 ```bash
 python src/semantic_engine/manage_semantics.py add all
