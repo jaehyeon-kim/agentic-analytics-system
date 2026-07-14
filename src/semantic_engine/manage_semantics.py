@@ -416,27 +416,41 @@ def test_queries():
         "SELECT c.first_name, o.total_amount FROM customers c JOIN orders o ON c.customer_id = o.customer_id LIMIT 5",
         
         # Multi-table JOIN testing
-        "SELECT p.product_name, SUM(oi.quantity) as sold FROM products p JOIN order_items oi ON p.product_id = oi.product_id JOIN orders o ON oi.order_id = o.order_id GROUP BY p.product_name ORDER BY sold DESC LIMIT 5",
-        
+        "SELECT p.product_name, SUM(oi.quantity) as sold FROM products p JOIN order_items oi ON p.product_id = oi.product_id JOIN orders o ON oi.order_id = o.order_id GROUP BY p.product_name ORDER BY sold DESC LIMIT 5"
+    ]
+    
+    test_cubes = [
         # Cube: customer_lifetime_value
-        "SELECT loyalty_tier, SUM(lifetime_spend) as total_spend FROM customer_lifetime_value GROUP BY loyalty_tier",
+        ["--cube", "customer_lifetime_value", "--measures", "total_orders", "--dimensions", "loyalty_tier"],
         
         # Cube: daily_revenue
-        "SELECT order_date, gross_revenue FROM daily_revenue ORDER BY order_date DESC LIMIT 5",
+        ["--cube", "daily_revenue", "--measures", "gross_revenue", "--dimensions", "status"],
         
         # Cube: product_performance
-        "SELECT category, units_sold, gross_sales FROM product_performance WHERE units_sold > 0 ORDER BY gross_sales DESC LIMIT 5"
+        ["--cube", "product_performance", "--measures", "units_sold", "--dimensions", "category"]
     ]
+    
     logger.info("🧪 Running extensive test suite against WrenAI...")
     success = True
+    
     for sql in test_sqls:
-        logger.info(f"Executing: {sql}")
+        logger.info(f"Executing SQL: {sql}")
         result = subprocess.run(["wren", "--sql", sql], cwd=str(PROJECT_DIR), capture_output=True, text=True)
         if result.returncode != 0:
             logger.error(f"❌ Query failed:\n{result.stderr.strip()}")
             success = False
         else:
             logger.info(f"✅ Success! Output:\n{result.stdout.strip()[:100]}...")
+            
+    for cube_args in test_cubes:
+        logger.info(f"Executing Cube Query: wren cube query {' '.join(cube_args)}")
+        result = subprocess.run(["wren", "cube", "query"] + cube_args, cwd=str(PROJECT_DIR), capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"❌ Cube Query failed:\n{result.stderr.strip()}")
+            success = False
+        else:
+            logger.info(f"✅ Success! Output:\n{result.stdout.strip()[:100]}...")
+            
     if success:
         logger.info("🎉 All queries executed successfully!")
     else:
