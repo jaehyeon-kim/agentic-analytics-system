@@ -403,7 +403,7 @@ The Strands orchestrator is fully **LLM-neutral** via LiteLLM and dynamically ro
 To use the cloud LLMs (Claude or Gemini):
 1. Copy the environment template: `cp src/agent/.env.example src/agent/.env`
 2. Add your respective API key (e.g., `ANTHROPIC_API_KEY="..."`).
-3. Set `AGENT_MODEL="claude-3-5-sonnet-20240620"`, `gemini/gemini-1.5-pro`, or another supported model string.
+3. Set `AGENT_MODEL="claude-3-5-sonnet-20240620"`, `gemini/gemini-3.1-flash-lite`, or another supported model string.
 
 <details>
 <summary>Alternative: 100% Local Execution (Ollama)</summary>
