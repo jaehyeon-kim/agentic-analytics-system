@@ -396,24 +396,45 @@ This module integrates Mem0 v3 over Qdrant for long-term memory, entity-linked r
 
 *(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
 
-### 🚀 Setting up the LLM (Ollama)
+### 🚀 Setting up the LLM (Claude, Gemini, or Ollama)
 
-To keep the orchestrator entirely local, private, and free, we use **Ollama** to serve the LLM.
+The Strands orchestrator is fully **LLM-neutral** via LiteLLM and dynamically routes API calls based on your `.env` configuration.
+
+To use the cloud LLMs (Claude or Gemini):
+1. Copy the environment template: `cp src/agent/.env.example src/agent/.env`
+2. Add your respective API key (e.g., `ANTHROPIC_API_KEY="..."`).
+3. Set `AGENT_MODEL="claude-3-5-sonnet-20240620"`, `gemini/gemini-1.5-pro`, or another supported model string.
+
+<details>
+<summary>Alternative: 100% Local Execution (Ollama)</summary>
+
+To keep the orchestrator entirely local, private, and free, you can switch the `AGENT_MODEL` to `ollama/qwen2.5-coder:7b`.
 
 1. **Install Ollama:**
    - On macOS with Homebrew: `brew install ollama`
    - Or download directly from [ollama.com](https://ollama.com).
 2. **Start the Ollama Server:**
-   - Open a new terminal window and run: `ollama serve` (leave this running in the background).
+   - Open a new terminal window and run: `ollama serve` (or `brew services start ollama`).
 3. **Pull the Model:**
-   - In your main terminal, download the Qwen 2.5 Coder 7B model (highly recommended for SQL/coding tasks):
+   - In your main terminal, download the recommended model:
      ```bash
      ollama pull qwen2.5-coder:7b
      ```
+</details>
 
-### 🚀 Running the Agent (Coming Soon)
+### 🚀 Running the Agent
 
-*(The Strands agent execution entry point will be added here once Module 3 is complete.)*
+With your LLM configured and your `.venv` activated, you can boot up the autonomous orchestrator:
+
+```bash
+# 1. Activate your virtual environment (if not already active)
+source .venv/bin/activate
+
+# 2. Run the agent
+python src/agent/orchestrator.py
+```
+
+Once you see `🧠 Orchestrator is online. Type 'exit' to quit.`, you can start asking natural language questions about your business data! The agent will autonomously connect to the WrenAI MCP server, explore the semantic schema, and generate/execute the physical SQL.
 
 ### 📊 Testing & Evaluation Plan
 

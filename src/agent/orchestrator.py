@@ -11,7 +11,7 @@ async def main():
     # Load environment variables from .env if present
     load_dotenv()
     
-    agent_model = os.environ.get("AGENT_MODEL", "gemini/gemini-1.5-pro")
+    agent_model = os.environ.get("AGENT_MODEL", "your-agent-model")
     print(f"🚀 Initializing Strands Orchestrator with Model: {agent_model}")
     
     # 1. Initialize the LLM neutrally
