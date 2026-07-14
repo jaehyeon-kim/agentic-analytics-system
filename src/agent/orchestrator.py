@@ -1,18 +1,27 @@
 import os
 import sys
 import asyncio
+import logging
 from dotenv import load_dotenv
 
 from strands import Agent
 from strands.models.litellm import LiteLLMModel
 from strands.tools.mcp.mcp_client import MCPClient
 
+# Configure logger exclusively for stderr to avoid corrupting MCP's stdout JSON-RPC pipe
+logger = logging.getLogger("orchestrator")
+logger.setLevel(logging.INFO)
+if not logger.handlers:
+    handler = logging.StreamHandler(sys.stderr)
+    handler.setFormatter(logging.Formatter("%(levelname)s: %(message)s"))
+    logger.addHandler(handler)
+
 async def main():
     # Load environment variables from .env if present
     load_dotenv()
     
     agent_model = os.environ.get("AGENT_MODEL", "your-agent-model")
-    print(f"🚀 Initializing Strands Orchestrator with Model: {agent_model}")
+    logger.info(f"🚀 Initializing Strands Orchestrator with Model: {agent_model}")
     
     # 1. Initialize the LLM neutrally
     llm = LiteLLMModel(model_id=agent_model)
@@ -37,21 +46,24 @@ async def main():
         }
     }
     
-    print(f"🔌 Connecting to WrenAI MCP Server at {wren_home}...")
+    logger.info(f"🔌 Connecting to WrenAI MCP Server at {wren_home}...")
     
     try:
         # Load the MCP client natively using the Strands SDK
         mcp_clients = MCPClient.load_servers(mcp_config)
     except Exception as e:
-        print(f"❌ Failed to connect to MCP Server: {e}")
-        print("Make sure 'wren' is installed and WREN_HOME is correct.")
+        logger.error(f"❌ Failed to connect to MCP Server: {e}")
+        logger.error("Make sure 'wren' is installed and WREN_HOME is correct.")
         sys.exit(1)
     
     # 3. Build the Agent
     system_prompt = """You are an elite autonomous AI Data Orchestrator. 
 Your goal is to answer user questions accurately by querying the semantic layer.
 You have access to the WrenAI semantic layer via MCP tools. 
-1. Explore the schema to find relevant metrics and models.
+1. Explore the schema to find relevant metrics and models. 
+   IMPORTANT: Users will ask natural language questions (e.g. "order items" or "revenue"). 
+   Do not expect them to know whether something is a 'cube', 'model', or 'view'. 
+   You must autonomously map their natural language to the correct semantic objects in the schema.
 2. Formulate a logical query plan based on the user's intent.
 3. Validate your SQL using dry_plan before execution.
 4. Execute the SQL and return the precise answer."""
@@ -63,7 +75,7 @@ You have access to the WrenAI semantic layer via MCP tools.
         system_prompt=system_prompt
     )
     
-    print("🧠 Orchestrator is online. Type 'exit' or 'quit' to close.\n")
+    logger.info("🧠 Orchestrator is online. Type 'exit' or 'quit' to close.\n")
     
     # 4. Interactive Loop
     while True:
@@ -74,22 +86,27 @@ You have access to the WrenAI semantic layer via MCP tools.
             if not user_input.strip():
                 continue
             
-            print("Agent ❯ Thinking...")
+            logger.info("Agent is thinking...")
             response = await agent.invoke_async(user_input)
             
-            # Extract text from the message content blocks
+            # Handle both dictionary and object formats for response.message
+            msg = response.message
+            content_blocks = msg.get("content", []) if isinstance(msg, dict) else getattr(msg, "content", [])
+            
             final_text = ""
-            for block in response.message.content:
-                if hasattr(block, "text"):
+            for block in content_blocks:
+                if isinstance(block, dict) and "text" in block:
+                    final_text += block["text"]
+                elif hasattr(block, "text"):
                     final_text += block.text
             
             print(f"Agent ❯ {final_text}\n")
             
         except KeyboardInterrupt:
-            print("\nExiting...")
+            logger.info("Exiting...")
             break
         except Exception as e:
-            print(f"⚠️ Error: {e}")
+            logger.error(f"⚠️ Error: {e}")
 
 if __name__ == "__main__":
     asyncio.run(main())
