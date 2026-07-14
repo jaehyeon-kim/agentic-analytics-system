@@ -139,7 +139,6 @@ def init_project():
     (PROJECT_DIR / "models").mkdir(parents=True)
     (PROJECT_DIR / "cubes").mkdir(parents=True)
     (PROJECT_DIR / "views").mkdir(parents=True)
-    (PROJECT_DIR / "relationships").mkdir(parents=True)
     (PROJECT_DIR / "knowledge" / "rules").mkdir(parents=True)
     (PROJECT_DIR / "knowledge" / "sql").mkdir(parents=True)
     
