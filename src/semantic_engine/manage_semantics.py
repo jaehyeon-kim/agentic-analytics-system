@@ -156,7 +156,7 @@ def init_project():
     profile_lines = [
         "profiles:",
         "  trino_local:",
-        "    type: trino",
+        "    datasource: trino",
         "    host: localhost",
         "    port: 8080",
         "    catalog: iceberg",
