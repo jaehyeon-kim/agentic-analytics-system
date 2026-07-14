@@ -2,6 +2,11 @@ import os
 import argparse
 import subprocess
 import logging
+from pathlib import Path
+
+BASE_DIR = Path(__file__).resolve().parent
+PROJECT_DIR = Path(os.environ.get("WREN_HOME", BASE_DIR / ".wren_project"))
+
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -82,10 +87,10 @@ CUBES = {
         "base_object": "orders",
         "description": "Daily aggregated revenue metrics based on the order creation date.",
         "time_dimensions": [
-            {"name": "order_date", "expression": "created_at"}
+            {"name": "order_date", "expression": "created_at", "type": "TIMESTAMP"}
         ],
         "dimensions": [
-            {"name": "status", "expression": "status"}
+            {"name": "status", "expression": "status", "type": "VARCHAR"}
         ],
         "measures": [
             {"name": "gross_revenue", "expression": "SUM(total_amount)", "type": "DOUBLE"},
@@ -96,8 +101,8 @@ CUBES = {
         "base_object": "customers",
         "description": "Aggregated lifetime spend and order count per customer.",
         "dimensions": [
-            {"name": "customer_id", "expression": "customer_id"},
-            {"name": "loyalty_tier", "expression": "loyalty_tier"}
+            {"name": "customer_id", "expression": "customer_id", "type": "INTEGER"},
+            {"name": "loyalty_tier", "expression": "loyalty_tier", "type": "VARCHAR"}
         ],
         "measures": [
             {"name": "total_orders", "expression": "COUNT(orders.order_id)", "type": "BIGINT"},
@@ -108,8 +113,8 @@ CUBES = {
         "base_object": "products",
         "description": "Aggregated product sales performance.",
         "dimensions": [
-            {"name": "product_id", "expression": "product_id"},
-            {"name": "category", "expression": "category"}
+            {"name": "product_id", "expression": "product_id", "type": "INTEGER"},
+            {"name": "category", "expression": "category", "type": "VARCHAR"}
         ],
         "measures": [
             {"name": "units_sold", "expression": "SUM(order_items.quantity)", "type": "BIGINT"},
@@ -129,10 +134,7 @@ RELATIONSHIPS = [
 
 def init_project():
     """Initializes the modern schema_version 5 folder structure with a clean slate."""
-    from pathlib import Path
     import shutil
-
-    PROJECT_DIR = Path("src/semantic_engine/.wren_project")
     if PROJECT_DIR.exists():
         shutil.rmtree(PROJECT_DIR)
 
@@ -149,7 +151,7 @@ def init_project():
         "profile: trino_local"
     ]
     
-    with open("src/semantic_engine/.wren_project/wren_project.yml", "w") as f:
+    with open(f"{PROJECT_DIR}/wren_project.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
 
     # Generate the local profiles.yml in the pinned WREN_HOME directory
@@ -164,7 +166,7 @@ def init_project():
         "    user: user",
         "active: trino_local"
     ]
-    with open("src/semantic_engine/.wren_project/profiles.yml", "w") as f:
+    with open(f"{PROJECT_DIR}/profiles.yml", "w") as f:
         f.write("\n".join(profile_lines) + "\n")
         
     logger.info("✅ Initialized empty MDL v5 project at src/semantic_engine/.wren_project")
@@ -182,18 +184,18 @@ def init_project():
             f"    condition: \"{rel['join']}\""
         ])
     
-    with open("src/semantic_engine/.wren_project/relationships.yml", "w") as f:
+    with open(f"{PROJECT_DIR}/relationships.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
     logger.info("✅ Created relationships.yml")
 
-    with open("src/semantic_engine/.wren_project/knowledge/knowledge.yml", "w") as f:
+    with open(f"{PROJECT_DIR}/knowledge/knowledge.yml", "w") as f:
         f.write("schema_version: 1\n")
 
     # Write example knowledge rules
-    with open("src/semantic_engine/.wren_project/knowledge/rules/business_definitions.md", "w") as f:
+    with open(f"{PROJECT_DIR}/knowledge/rules/business_definitions.md", "w") as f:
         f.write("# Business Definitions\n\n## Active Customers\nAn active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n")
     
-    with open("src/semantic_engine/.wren_project/knowledge/sql/top_customers.md", "w") as f:
+    with open(f"{PROJECT_DIR}/knowledge/sql/top_customers.md", "w") as f:
         f.write("---\nnl: Who are our top 5 customers?\nsql: |\n  SELECT first_name, last_name, lifetime_spend\n  FROM customer_lifetime_value\n  ORDER BY lifetime_spend DESC\n  LIMIT 5\ndatasource: trino\nsource: user\n---\n")
     logger.info("✅ Created example knowledge definitions.")
 
@@ -204,7 +206,7 @@ def add_model(table_name):
         logger.error(f"❌ Table '{table_name}' definition not found in registry.")
         return
     
-    os.makedirs(f"src/semantic_engine/.wren_project/models/{table_name}", exist_ok=True)
+    os.makedirs(f"{PROJECT_DIR}/models/{table_name}", exist_ok=True)
     
     meta = MODELS[table_name]
     
@@ -241,7 +243,7 @@ def add_model(table_name):
         if col.get("is_primary_key"):
             yaml_lines.append("    is_primary_key: true")
             
-    with open(f"src/semantic_engine/.wren_project/models/{table_name}/metadata.yml", "w") as f:
+    with open(f"{PROJECT_DIR}/models/{table_name}/metadata.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
         
     logger.info(f"✅ Created model: models/{table_name}/metadata.yml")
@@ -252,7 +254,7 @@ def add_cube(cube_name):
         logger.error(f"❌ Cube '{cube_name}' definition not found in registry.")
         return
     
-    os.makedirs(f"src/semantic_engine/.wren_project/cubes/{cube_name}", exist_ok=True)
+    os.makedirs(f"{PROJECT_DIR}/cubes/{cube_name}", exist_ok=True)
     
     meta = CUBES[cube_name]
     
@@ -266,12 +268,16 @@ def add_cube(cube_name):
         for dim in meta["dimensions"]:
             yaml_lines.append(f"  - name: {dim['name']}")
             yaml_lines.append(f"    expression: {dim['expression']}")
+            if 'type' in dim:
+                yaml_lines.append(f"    type: {dim['type']}")
             
     if "time_dimensions" in meta:
         yaml_lines.append("time_dimensions:")
         for tdim in meta["time_dimensions"]:
             yaml_lines.append(f"  - name: {tdim['name']}")
             yaml_lines.append(f"    expression: {tdim['expression']}")
+            if 'type' in tdim:
+                yaml_lines.append(f"    type: {tdim['type']}")
             
     if "measures" in meta:
         yaml_lines.append("measures:")
@@ -280,14 +286,14 @@ def add_cube(cube_name):
             yaml_lines.append(f"    expression: \"{meas['expression']}\"")
             yaml_lines.append(f"    type: {meas['type']}")
             
-    with open(f"src/semantic_engine/.wren_project/cubes/{cube_name}/metadata.yml", "w") as f:
+    with open(f"{PROJECT_DIR}/cubes/{cube_name}/metadata.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
         
     logger.info(f"✅ Created cube: cubes/{cube_name}/metadata.yml")
 
 def remove_model(table_name):
     """Deletes an MDL YAML folder."""
-    path = f"src/semantic_engine/.wren_project/models/{table_name}"
+    path = f"{PROJECT_DIR}/models/{table_name}"
     if os.path.exists(path):
         import shutil
         shutil.rmtree(path)
@@ -297,8 +303,8 @@ def remove_model(table_name):
 
 def list_models():
     """Lists all active models and cubes in the engine."""
-    path = "src/semantic_engine/.wren_project/models"
-    cubes_path = "src/semantic_engine/.wren_project/cubes"
+    path = f"{PROJECT_DIR}/models"
+    cubes_path = f"{PROJECT_DIR}/cubes"
     if not os.path.exists(path):
         logger.error("❌ Models directory does not exist. Run 'init' first.")
         return
@@ -322,9 +328,9 @@ def build_context():
     """Compiles the WrenAI semantic context into the mdl.json manifest."""
     logger.info("🧠 Validating Semantic Context...")
     try:
-        subprocess.run(["wren", "context", "validate"], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "context", "validate"], cwd=f"{PROJECT_DIR}", check=True)
         logger.info("🧠 Compiling Semantic Context (Generating mdl.json manifest)...")
-        subprocess.run(["wren", "context", "build"], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "context", "build"], cwd=f"{PROJECT_DIR}", check=True)
         logger.info("🎉 Semantic Engine compiled successfully! mdl.json is ready.")
     except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found. Make sure you have activated your virtual environment.")
@@ -337,7 +343,7 @@ def index_memory():
     """Builds the local .wren/memory retrieval index."""
     logger.info("🧠 Indexing Semantic Memory (Vectorizing to local .wren/memory)...")
     try:
-        subprocess.run(["wren", "memory", "index"], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "memory", "index"], cwd=f"{PROJECT_DIR}", check=True)
         logger.info("🎉 Semantic memory successfully indexed locally.")
     except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found.")
@@ -350,7 +356,7 @@ def query_context(sql_query):
     """Wraps the WrenAI SQL execution CLI."""
     logger.info(f"🔎 Executing Semantic Query: {sql_query}")
     try:
-        subprocess.run(["wren", "--sql", sql_query], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "--sql", sql_query], cwd=f"{PROJECT_DIR}", check=True)
     except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found.")
         raise SystemExit(127) from exc
@@ -362,7 +368,7 @@ def watch_memory():
     """Runs the WrenAI dynamic memory indexing daemon."""
     logger.info("👀 Starting Memory Watch Daemon (auto-indexing every 2 seconds)...")
     try:
-        subprocess.run(["wren", "memory", "watch", "-i", "2"], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "memory", "watch", "-i", "2"], cwd=f"{PROJECT_DIR}", check=True)
     except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found.")
         raise SystemExit(127) from exc
@@ -376,7 +382,7 @@ def dry_plan(sql_query):
     """Validates the syntax and logic of a SQL query without executing it."""
     logger.info(f"🧪 Dry Planning Semantic Query: {sql_query}")
     try:
-        subprocess.run(["wren", "dry-plan", "--sql", sql_query], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "dry-plan", "--sql", sql_query], cwd=f"{PROJECT_DIR}", check=True)
         logger.info("✅ Dry plan successful. Query is valid.")
     except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found.")
@@ -389,7 +395,7 @@ def serve_mcp():
     """Runs the WrenAI native MCP server."""
     logger.info("🚀 Starting WrenAI native MCP server...")
     try:
-        subprocess.run(["wren", "serve", "mcp"], cwd="src/semantic_engine/.wren_project", check=True)
+        subprocess.run(["wren", "serve", "mcp"], cwd=f"{PROJECT_DIR}", check=True)
     except FileNotFoundError as exc:
         logger.error("⚠️ 'wren' CLI not found. Is wrenai[mcp] installed?")
         raise SystemExit(127) from exc
@@ -398,6 +404,43 @@ def serve_mcp():
     except subprocess.CalledProcessError as exc:
         logger.error("⚠️ MCP server failed.")
         raise SystemExit(exc.returncode) from exc
+
+
+def test_queries():
+    """Runs an extensive set of test SQL queries against WrenAI to validate the semantic layer."""
+    test_sqls = [
+        # Basic Model Selection
+        "SELECT COUNT(*) FROM customers",
+        
+        # Explicit JOIN testing (Testing Relationships)
+        "SELECT c.first_name, o.total_amount FROM customers c JOIN orders o ON c.customer_id = o.customer_id LIMIT 5",
+        
+        # Multi-table JOIN testing
+        "SELECT p.product_name, SUM(oi.quantity) as sold FROM products p JOIN order_items oi ON p.product_id = oi.product_id JOIN orders o ON oi.order_id = o.order_id GROUP BY p.product_name ORDER BY sold DESC LIMIT 5",
+        
+        # Cube: customer_lifetime_value
+        "SELECT loyalty_tier, SUM(lifetime_spend) as total_spend FROM customer_lifetime_value GROUP BY loyalty_tier",
+        
+        # Cube: daily_revenue
+        "SELECT order_date, gross_revenue FROM daily_revenue ORDER BY order_date DESC LIMIT 5",
+        
+        # Cube: product_performance
+        "SELECT category, units_sold, gross_sales FROM product_performance WHERE units_sold > 0 ORDER BY gross_sales DESC LIMIT 5"
+    ]
+    logger.info("🧪 Running extensive test suite against WrenAI...")
+    success = True
+    for sql in test_sqls:
+        logger.info(f"Executing: {sql}")
+        result = subprocess.run(["wren", "--sql", sql], cwd=str(PROJECT_DIR), capture_output=True, text=True)
+        if result.returncode != 0:
+            logger.error(f"❌ Query failed:\n{result.stderr.strip()}")
+            success = False
+        else:
+            logger.info(f"✅ Success! Output:\n{result.stdout.strip()[:100]}...")
+    if success:
+        logger.info("🎉 All queries executed successfully!")
+    else:
+        logger.error("⚠️ Some queries failed.")
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="WrenAI Semantic Engine Management CLI")
@@ -428,14 +471,17 @@ if __name__ == "__main__":
     
     # Query
     parser_query = subparsers.add_parser("query", help="Execute a query against the semantic engine")
-    parser_query.add_argument("sql", help="The SQL string to execute")
+    parser_query.add_argument("sql", help="SQL string to execute")
 
     # Dry-plan
     parser_dry = subparsers.add_parser("dry-plan", help="Validate a SQL query without executing it")
-    parser_dry.add_argument("sql", help="The SQL string to validate")
+    parser_dry.add_argument("sql", help="SQL string to validate")
 
     # Serve MCP
     subparsers.add_parser("serve", help="Start the native WrenAI MCP server")
+    
+    # Test
+    subparsers.add_parser("test", help="Run extensive test queries")
 
     args = parser.parse_args()
 
@@ -470,3 +516,5 @@ if __name__ == "__main__":
         dry_plan(args.sql)
     elif args.command == "serve":
         serve_mcp()
+    elif args.command == "test":
+        test_queries()
