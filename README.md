@@ -371,18 +371,17 @@ In this module, you will bring the AI orchestrator to life by connecting it to y
 
 ### Objectives
 
-- Write local Python tools using the MCP framework.
-- Expose your Trino database securely so an AI agent can execute queries against it.
+- Leverage WrenAI's native MCP server (`wren serve mcp`) to securely expose the semantic layer to the AI agent, removing the need for manual database connection boilerplate.
 - Build a local Python CLI using the **Strands** framework.
 - Connect Strands to a local **Ollama** LLM (e.g., `qwen2.5-coder:7b`).
-- Enable the agent to autonomously reason about user questions, select the right database tools, and return data-driven answers.
+- Enable the agent to autonomously reason about user questions, explore the schema via `wren://mdl` resources, validate queries using `dry_plan`, and return data-driven answers.
 
 ### 🏗️ Text-to-SQL Architecture & Validation
 
-Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
+Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach powered by WrenAI's native MCP integration:
 
 1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
-2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: The Strands agent can query live database metadata (like Trino's `information_schema.columns`) to confirm that the physical columns referenced by the MDL still exist. This acts as a structural complement to the MDL — the MDL remains the authoritative source for semantic descriptions and business definitions, while `information_schema` validates that the underlying physical schema has not drifted.
+2. **Schema & Syntax Validation (Native MCP Tools)** *[Implemented in Module 3]*: The Strands agent utilizes WrenAI's native MCP endpoints to cross-reference the MDL and validate generated SQL using the `dry_plan` tool. This tests the logic and syntax against live metadata without executing a potentially expensive physical query, acting as a structural safeguard against hallucinations.
 
 ### Incorporating Mem0
 
