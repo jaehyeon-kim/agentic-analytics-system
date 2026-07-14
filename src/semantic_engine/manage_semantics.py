@@ -3,6 +3,9 @@ import argparse
 import subprocess
 import logging
 
+# Pin the WrenAI home directory to keep profiles local (like dbt's --profiles-dir)
+os.environ["WREN_HOME"] = os.path.abspath("src/semantic_engine")
+
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 
@@ -145,11 +148,30 @@ def init_project():
     yaml_lines = [
         "schema_version: 5",
         "name: agentic-ecommerce",
-        "data_source: trino"
+        "data_source: trino",
+        "profile: trino_local"
     ]
+    
     with open("src/semantic_engine/.wren_project/wren_project.yml", "w") as f:
         f.write("\n".join(yaml_lines) + "\n")
-    logger.info("✅ Initialized WrenAI project (schema_version: 5).")
+
+    # Generate the local profiles.yml in the pinned WREN_HOME directory
+    profile_lines = [
+        "profiles:",
+        "  trino_local:",
+        "    type: trino",
+        "    host: localhost",
+        "    port: 8080",
+        "    catalog: iceberg",
+        "    schema: ecommerce",
+        "    user: user",
+        "active: trino_local"
+    ]
+    with open("src/semantic_engine/profiles.yml", "w") as f:
+        f.write("\n".join(profile_lines) + "\n")
+        
+    logger.info("✅ Initialized empty MDL v5 project at src/semantic_engine/.wren_project")
+    logger.info("✅ Generated local profiles.yml at src/semantic_engine/profiles.yml")
     
     # Write relationships
     yaml_lines = ["relationships:"]
