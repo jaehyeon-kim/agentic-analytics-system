@@ -3,9 +3,6 @@ import argparse
 import subprocess
 import logging
 
-# Pin the WrenAI home directory to keep profiles local (like dbt's --profiles-dir)
-os.environ["WREN_HOME"] = os.path.abspath("src/semantic_engine")
-
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
 

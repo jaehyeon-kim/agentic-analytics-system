@@ -105,6 +105,7 @@ Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and [Ollam
 uv python install 3.12
 uv venv --python 3.12
 source .venv/bin/activate
+export WREN_HOME=$(pwd)/src/semantic_engine
 uv pip install -r src/requirements.txt
 ```
 
@@ -140,6 +141,8 @@ Run the data generator (configured for 90 days of history and 50,000 events per 
 ```bash
 python src/data_pipeline/generate_data.py --days 90 --batch_size 50000
 ```
+
+TODO: Object storage (SeeweedFS) can be accessed at [http://localhost:8889](http://localhost:8889).
 
 ### ❄️ Step 3: Iceberg Integration
 
@@ -263,8 +266,6 @@ WrenAI provides a **governed semantic compiler and execution boundary**. It does
 
 By defining our business logic (e.g., "Net Revenue") using WrenAI's modern [Modeling Definition Language](https://docs.getwren.ai/oss/concepts/what_is_mdl) (MDL schema version 5), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
 
-
-
 ### 🛡️ Implementation Considerations
 
 When building the agentic semantic layer, several practical safeguards must be established:
@@ -297,6 +298,9 @@ Instead of manually typing arbitrary Wren CLI commands or handling one-off setup
 WrenAI uses a generated project directory structure (schema version 5) to manage its semantic models. This command initializes the `.wren_project/` directory and generates a `wren_project.yml` file pointing to our Trino data source. By keeping the semantic logic decoupled from the database, we treat our business logic as code.
 
 ```bash
+# TODO: show why it is necessary. This part is taken from manage_semantics.py as well
+export WREN_PROJECT_HOME=$(pwd)/src/semantic_engine
+
 python src/semantic_engine/manage_semantics.py init
 ```
 
