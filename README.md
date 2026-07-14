@@ -118,7 +118,7 @@ In this module, you will build the core batch data infrastructure for the Agenti
 
 - Use the `odctl` orchestrator to launch a local Lakehouse stack (Trino, Iceberg REST Catalog, SeaweedFS, WrenAI).
 - Use `dynamic-des` to instantly generate historical datasets (customers, products, orders, order items, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
-- Ingest the raw Parquet files into the Iceberg catalog as managed tables, then create pre-aggregated analytical views (e.g., `daily_revenue`, `customer_lifetime_value`, `product_performance`) on top of them.
+- Ingest the raw Parquet files into the Iceberg catalog as managed tables.
 
 ### 🛠️ Step 1: Launch the Infrastructure
 
@@ -143,7 +143,7 @@ python src/data_pipeline/generate_data.py --days 90 --batch_size 50000
 
 ### ❄️ Step 3: Iceberg Integration
 
-Now that the raw Parquet data exists in the `odctl-dev` bucket, we need to load it into the Iceberg catalog as managed Iceberg tables and create pre-aggregated analytical views.
+Now that the raw Parquet data exists in the `odctl-dev` bucket, we need to load it into the Iceberg catalog as managed Iceberg tables.
 
 > **Note:** For this PoC, the pipeline script performs a destructive reload. It drops any existing tables and re-ingests the data from scratch, ensuring a clean slate.
 
@@ -153,11 +153,11 @@ Execute the script directly:
 python src/data_pipeline/run_pipeline.py
 ```
 
-This script reads the raw data using PyArrow, writes formal Iceberg tables via the REST Catalog, and creates Trino views for pre-aggregated metrics. Semantic descriptions are added directly to the MDL files in Module 2 rather than as Iceberg table comments.
+This script reads the raw data using PyArrow and writes formal Iceberg tables via the REST Catalog. Semantic descriptions are added directly to the MDL files in Module 2 rather than as Iceberg table comments.
 
 ### 🔎 Step 4: Query the Lakehouse
 
-You can instantly query your newly registered Iceberg tables and views using Trino's SQL engine.
+You can instantly query your newly registered Iceberg tables using Trino's SQL engine.
 
 **Option A: Trino CLI (Terminal)**
 
@@ -273,6 +273,7 @@ When building the agentic semantic layer, several practical safeguards must be e
 * **Pragmatic Ambiguity Resolution:** Terms like "revenue" are ambiguous. The orchestrator (Strands) handles ambiguity. Once clarified, conversational memory (Mem0 over Qdrant) stores the user's preferences (e.g. "I mean net revenue when I say revenue"). Note: Mem0 handles user context; WrenAI handles authoritative semantic truth.
 * **Data Governance & Security:** The agent translates natural language into SQL and executes it on the user's behalf. It must not have "God Mode" access. We rely on **Trino's built-in access control** and Iceberg column-level security so that unauthorized queries (e.g., accessing PII) are rejected at the database level, and the agent can appropriately reply, "I don't have permission to view that data."
 * **Simplifying Complex JOINs with MDL:** Writing SQL that joins 5+ tables is a common failure point for LLMs. Instead of forcing the LLM to navigate the raw schema, we build predefined semantic models and relationships using **WrenAI's Modeling Definition Language (MDL)**. By mapping physical Iceberg tables to logical YAML models in the `src/semantic_engine/` directory, we flatten the schema and provide explicit business definitions that the LLM cannot hallucinate.
+* **Governing Business Metrics via Cubes:** Rather than relying exclusively on pre-aggregated Trino views or asking the LLM to hallucinate complex `GROUP BY` logic, WrenAI supports dedicated **Cubes** (`cubes/<name>/metadata.yml`). This allows us to define standardized metrics (e.g., ARR, WAU) directly within the semantic layer, providing a structured query API for the Strands agent.
 
 ### 💾 Production Persistence (Query History)
 
@@ -333,6 +334,8 @@ Note that Wren defaults to full context rather than similarity search for smalle
 ```bash
 python src/semantic_engine/manage_semantics.py index
 ```
+
+**Dynamic Indexing (Daemon Mode):** Instead of manually re-indexing on every MDL change, you can run `wren memory watch -i 2` in the background. This daemon watches `mdl.json` and `knowledge/sql/*.md` files, automatically re-indexing LanceDB within 2 seconds of any change.
 
 To explicitly demonstrate embedding retrieval and force RAG behavior regardless of schema size, you can run a fetch with a low threshold:
 

@@ -1,6 +1,6 @@
 dynamic-des[parquet]
 pyiceberg[s3fs]
-wrenai[trino,memory,main]
+wrenai[trino,memory,main,mcp]
 strands-agents
 strands-agents-tools
 mem0ai[nlp]

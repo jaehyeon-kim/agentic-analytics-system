@@ -17,78 +17,6 @@ TABLE_DESCRIPTIONS = {
     "payments": "Financial transaction logs for orders, tracking payment method, amount captured, and payment timestamp."
 }
 
-def create_business_views():
-    import trino
-    logger.info("Creating business metric views in Trino...")
-    try:
-        conn = trino.dbapi.connect(
-            host='localhost',
-            port=8080,
-            user='user',
-            catalog='iceberg',
-            schema='ecommerce'
-        )
-        cur = conn.cursor()
-        
-        views = {
-            "daily_revenue": """
-                CREATE OR REPLACE VIEW ecommerce.daily_revenue AS
-                WITH refunds_by_order AS (
-                    SELECT
-                        order_id,
-                        SUM(refund_amount) AS refund_amount
-                    FROM ecommerce.returns
-                    WHERE return_status = 'processed'
-                    GROUP BY order_id
-                )
-                SELECT
-                    CAST(o.created_at AS DATE) AS date,
-                    SUM(o.total_amount) AS gross_revenue,
-                    SUM(COALESCE(r.refund_amount, 0)) AS total_refunds,
-                    SUM(o.total_amount - COALESCE(r.refund_amount, 0)) AS net_revenue
-                FROM ecommerce.orders o
-                LEFT JOIN refunds_by_order r
-                    ON o.order_id = r.order_id
-                WHERE o.status != 'cancelled'
-                GROUP BY 1
-            """,
-            "customer_lifetime_value": """
-                CREATE OR REPLACE VIEW ecommerce.customer_lifetime_value AS
-                SELECT 
-                    c.customer_id,
-                    c.first_name,
-                    c.last_name,
-                    COUNT(DISTINCT o.order_id) as total_orders,
-                    SUM(o.total_amount) as lifetime_spend
-                FROM ecommerce.customers c
-                LEFT JOIN ecommerce.orders o ON c.customer_id = o.customer_id AND o.status != 'cancelled'
-                GROUP BY 1, 2, 3
-            """,
-            "product_performance": """
-                CREATE OR REPLACE VIEW ecommerce.product_performance AS
-                SELECT 
-                    p.product_id,
-                    p.product_name,
-                    p.category,
-                    SUM(oi.quantity) as units_sold,
-                    SUM(oi.total_price) as gross_sales
-                FROM ecommerce.products p
-                LEFT JOIN ecommerce.order_items oi ON p.product_id = oi.product_id
-                LEFT JOIN ecommerce.orders o ON oi.order_id = o.order_id
-                WHERE o.status != 'cancelled' OR o.status IS NULL
-                GROUP BY 1, 2, 3
-            """
-        }
-
-        for view_name, ddl in views.items():
-            logger.info(f"  -> Creating view: {view_name}")
-            cur.execute(ddl)
-            cur.fetchall()
-            
-        logger.info("✅ All business views created successfully.")
-    except Exception as e:
-        logger.error(f"⚠️ Failed to create views: {e}")
-        raise
 
 def main():
     import os
@@ -161,8 +89,6 @@ def main():
     if failures:
         raise SystemExit(f"Failed to load tables: {', '.join(failures)}")
 
-    # Execute view generation after base tables are loaded
-    create_business_views()
 
 if __name__ == "__main__":
     main()
