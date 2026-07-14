@@ -354,18 +354,19 @@ wren memory fetch \
 </details>
 
 <details>
-<summary>Verifying the Trino Profile</summary>
+<summary>Verifying the Trino Profile and Queries</summary>
 
-Once the project is initialized and indexed, you can verify that WrenAI is correctly connected to the Lakehouse. The `odctl` orchestrator pre-configures the Trino profile for you in the background.
+Once the project is initialized and indexed, you can verify that WrenAI is correctly connected to the Lakehouse. Our management script natively generates a localized connection profile inside `.wren_project` to keep your environment clean.
 
 ```bash
-cd src/semantic_engine/.wren_project
-
+# Verify the active profile (Requires WREN_HOME to be exported as detailed above)
 wren profile debug
-wren --sql "SELECT COUNT(*) FROM customers"
+
+# Run the extensive automated test suite to validate joins and cubes
+python src/semantic_engine/manage_semantics.py test
 ```
 
-The profile should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema.
+The profile should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema, and the test suite should execute all queries successfully.
 
 </details>
 
