@@ -396,9 +396,24 @@ This module integrates Mem0 v3 over Qdrant for long-term memory, entity-linked r
 
 *(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
 
+### 🚀 Setting up the LLM (Ollama)
+
+To keep the orchestrator entirely local, private, and free, we use **Ollama** to serve the LLM.
+
+1. **Install Ollama:**
+   - On macOS with Homebrew: `brew install ollama`
+   - Or download directly from [ollama.com](https://ollama.com).
+2. **Start the Ollama Server:**
+   - Open a new terminal window and run: `ollama serve` (leave this running in the background).
+3. **Pull the Model:**
+   - In your main terminal, download the Qwen 2.5 Coder 7B model (highly recommended for SQL/coding tasks):
+     ```bash
+     ollama pull qwen2.5-coder:7b
+     ```
+
 ### 🚀 Running the Agent (Coming Soon)
 
-*(The agent execution entry point will be added here once Module 3 is complete.)*
+*(The Strands agent execution entry point will be added here once Module 3 is complete.)*
 
 ### 📊 Testing & Evaluation Plan
 
