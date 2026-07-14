@@ -98,27 +98,25 @@ CUBES = {
         ]
     },
     "customer_lifetime_value": {
-        "base_object": "customers",
+        "base_object": "orders",
         "description": "Aggregated lifetime spend and order count per customer.",
         "dimensions": [
-            {"name": "customer_id", "expression": "customer_id", "type": "INTEGER"},
-            {"name": "loyalty_tier", "expression": "loyalty_tier", "type": "VARCHAR"}
+            {"name": "customer_id", "expression": "customer_id", "type": "INTEGER"}
         ],
         "measures": [
-            {"name": "total_orders", "expression": "COUNT(orders.order_id)", "type": "BIGINT"},
-            {"name": "lifetime_spend", "expression": "SUM(orders.total_amount)", "type": "DOUBLE"}
+            {"name": "total_orders", "expression": "COUNT(order_id)", "type": "BIGINT"},
+            {"name": "lifetime_spend", "expression": "SUM(total_amount)", "type": "DOUBLE"}
         ]
     },
     "product_performance": {
-        "base_object": "products",
+        "base_object": "order_items",
         "description": "Aggregated product sales performance.",
         "dimensions": [
-            {"name": "product_id", "expression": "product_id", "type": "INTEGER"},
-            {"name": "category", "expression": "category", "type": "VARCHAR"}
+            {"name": "product_id", "expression": "product_id", "type": "INTEGER"}
         ],
         "measures": [
-            {"name": "units_sold", "expression": "SUM(order_items.quantity)", "type": "BIGINT"},
-            {"name": "gross_sales", "expression": "SUM(order_items.total_price)", "type": "DOUBLE"}
+            {"name": "units_sold", "expression": "SUM(quantity)", "type": "BIGINT"},
+            {"name": "gross_sales", "expression": "SUM(total_price)", "type": "DOUBLE"}
         ]
     }
 }
@@ -421,13 +419,13 @@ def test_queries():
     
     test_cubes = [
         # Cube: customer_lifetime_value
-        ["--cube", "customer_lifetime_value", "--measures", "total_orders", "--dimensions", "loyalty_tier"],
+        ["--cube", "customer_lifetime_value", "--measures", "total_orders", "--dimensions", "customer_id"],
         
         # Cube: daily_revenue
         ["--cube", "daily_revenue", "--measures", "gross_revenue", "--dimensions", "status"],
         
         # Cube: product_performance
-        ["--cube", "product_performance", "--measures", "units_sold", "--dimensions", "category"]
+        ["--cube", "product_performance", "--measures", "units_sold", "--dimensions", "product_id"]
     ]
     
     logger.info("🧪 Running extensive test suite against WrenAI...")
