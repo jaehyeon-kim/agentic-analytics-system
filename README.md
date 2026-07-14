@@ -106,8 +106,8 @@ In this module, you will build the core batch data infrastructure for the Agenti
 ### Objectives
 
 - Use the `odctl` orchestrator to launch a local Lakehouse stack (Trino, Iceberg REST Catalog, SeaweedFS, WrenAI).
-- Use `dynamic-des` to instantly generate massive historical datasets (customers, products, orders, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
-- Ingest and register the raw Parquet files into the Iceberg catalog using PyIceberg.
+- Use `dynamic-des` to instantly generate historical datasets (customers, products, orders, order items, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
+- Ingest the raw Parquet files into the Iceberg catalog as managed tables, then create pre-aggregated analytical views (e.g., `daily_revenue`, `customer_lifetime_value`, `product_performance`) on top of them.
 
 ### 🛠️ Step 1: Launch the Infrastructure
 
@@ -132,7 +132,7 @@ python src/data_pipeline/generate_data.py --days 90 --batch_size 50000
 
 ### ❄️ Step 3: Iceberg Integration
 
-Now that the raw Parquet data exists in the `odctl-dev` bucket, we need to load it into the Iceberg catalog as managed Iceberg tables.
+Now that the raw Parquet data exists in the `odctl-dev` bucket, we need to load it into the Iceberg catalog as managed Iceberg tables and create pre-aggregated analytical views.
 
 > **Note:** For this PoC, the pipeline script performs a destructive reload. It drops any existing tables and re-ingests the data from scratch, ensuring a clean slate.
 
@@ -142,11 +142,11 @@ Execute the script directly:
 python src/data_pipeline/run_pipeline.py
 ```
 
-This script reads the raw data using PyArrow and writes formal Iceberg metadata via the REST Catalog, attaching semantic comments to each table to assist WrenAI in Module 2.
+This script reads the raw data using PyArrow, writes formal Iceberg tables via the REST Catalog, and creates Trino views for pre-aggregated metrics. Semantic descriptions are added directly to the MDL files in Module 2 rather than as Iceberg table comments.
 
 ### 🔎 Step 4: Query the Lakehouse
 
-You can instantly query your newly registered Iceberg tables using Trino's massively parallel SQL engine.
+You can instantly query your newly registered Iceberg tables and views using Trino's SQL engine.
 
 **Option A: Trino CLI (Terminal)**
 
@@ -156,7 +156,7 @@ The `odctl` Trino container comes with the CLI pre-installed. Drop into a SQL sh
 docker exec -it trino trino
 ```
 
-**Option B: DBeaver / DataGrip (Visual UI)**
+**Option B: SQL Client (e.g. DBeaver)**
 
 Connect your favorite SQL client using the built-in Trino driver with these credentials:
 * **Host:** `localhost`
@@ -165,7 +165,7 @@ Connect your favorite SQL client using the built-in Trino driver with these cred
 * **Password:** *(Leave blank)*
 
 <details>
-<summary>Example Queries</summary>
+<summary><strong>Example Queries</strong></summary>
 
 #### 1. View the Structure (Catalogs & Schemas)
 
@@ -230,9 +230,9 @@ In this module, you will secure the AI's logic to prevent SQL hallucinations and
 
 ### Objectives
 
-- Connect WrenAI to the Trino engine to access the underlying Iceberg tables.
+- Connect WrenAI to the Trino engine to access the underlying Iceberg tables and views.
 - Define explicit semantic models and business metrics to provide strict guardrails against AI hallucinations.
-- Understand and configure the hybrid approach for Text-to-SQL: utilizing **Table Discovery** (RAG) to dynamically find relevant tables and **Schema Validation** to prevent errors from schema drift.
+- Configure WrenAI's **Table Discovery** (RAG) pipeline to dynamically retrieve relevant tables from the semantic index. **Schema Validation** against live metadata is handled by the Strands agent in Module 3.
 - Create a "Golden Test Suite" of natural language questions and their exact SQL counterparts to evaluate execution accuracy.
 
 ### 🧠 Agentic Brain Philosophy
@@ -250,14 +250,14 @@ WrenAI provides a **governed semantic compiler and execution boundary**. It does
 2. Plan physical SQL and apply business definitions.
 3. Validate and dry-run queries against the backend.
 
-By defining our business logic (e.g., "Net Revenue") using WrenAI's modern Modeling Definition Language (MDL schema version 5), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
+By defining our business logic (e.g., "Net Revenue") using WrenAI's modern [Modeling Definition Language](https://docs.getwren.ai/oss/concepts/what_is_mdl) (MDL schema version 5), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
 
 ### 🏗️ Text-to-SQL Architecture & Validation
 
 Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approach](https://medium.com/pinterest-engineering/how-we-built-text-to-sql-at-pinterest-30bad30dabff)), building an effective Text-to-SQL system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach:
 
 1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
-2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: To prevent hallucinations due to schema drift (e.g., deleted or added columns), the agent is equipped to query live database metadata (like Trino's `information_schema.columns`) for the retrieved tables *before* executing the final SQL. This guarantees up-to-the-second accuracy.
+2. **Schema Validation (Live Agent Tools)** *[Implemented in Module 3]*: The Strands agent can query live database metadata (like Trino's `information_schema.columns`) to confirm that the physical columns referenced by the MDL still exist. This acts as a structural complement to the MDL — the MDL remains the authoritative source for semantic descriptions and business definitions, while `information_schema` validates that the underlying physical schema has not drifted.
 
 ### 🛡️ Implementation Considerations
 
@@ -283,22 +283,6 @@ Approved Text-to-SQL examples are represented by `knowledge/sql/*.md`. For this 
 We have fully automated the lifecycle of the WrenAI Semantic Layer via a Management CLI suite (`src/semantic_engine/manage_semantics.py`).
 
 Instead of manually typing arbitrary Wren CLI commands or handling one-off setup scripts, this CLI provides robust CRUD operations.
-
-<details>
-<summary>Verifying the Trino Profile</summary>
-
-WrenAI needs to know how to connect to the Lakehouse. The `odctl` orchestrator pre-configures this for you in the background. You can verify the Trino profile inside the semantic engine directory:
-
-```bash
-cd src/semantic_engine/.wren_project
-
-wren profile debug
-wren --sql "SELECT COUNT(*) FROM customers"
-```
-
-The profile should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema.
-
-</details>
 
 <details>
 <summary>Project Initialization (<code>init</code>)</summary>
@@ -354,6 +338,22 @@ wren memory fetch \
   --threshold 1 \
   --output json
 ```
+
+</details>
+
+<details>
+<summary>Verifying the Trino Profile</summary>
+
+Once the project is initialized and indexed, you can verify that WrenAI is correctly connected to the Lakehouse. The `odctl` orchestrator pre-configures the Trino profile for you in the background.
+
+```bash
+cd src/semantic_engine/.wren_project
+
+wren profile debug
+wren --sql "SELECT COUNT(*) FROM customers"
+```
+
+The profile should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema.
 
 </details>
 
