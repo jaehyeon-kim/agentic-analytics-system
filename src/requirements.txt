@@ -3,6 +3,7 @@ pyiceberg[s3fs]
 wrenai[trino,memory,main,mcp]
 strands-agents
 strands-agents-tools
+litellm
 mem0ai[nlp]
 fastembed
 qdrant-client>=1.12.0
