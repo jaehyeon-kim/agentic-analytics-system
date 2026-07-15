@@ -127,8 +127,7 @@ You have access to the WrenAI semantic layer via MCP tools.
     agent = Agent(
         model=llm,
         tools=mcp_clients,
-        system_prompt=system_prompt,
-        max_steps=5
+        system_prompt=system_prompt
     )
 
     logger.info("🧠 Orchestrator is online. Type 'exit' or 'quit' to close.\n")

@@ -337,7 +337,7 @@ The most effective way to stop an LLM from searching for non-existent columns is
 
 ### 3. Bounding Agent Retries
 Frameworks like the Strands SDK allow agents to autonomously retry failed tool calls. If not bounded, a single syntax error can result in 10+ API calls, burning tokens and increasing latency.
-* **Fix:** Always set a strict `max_steps` (e.g., 5) on the agent instantiation. Additionally, instruct the agent via the system prompt: *"If `run_sql` fails more than twice with syntax or table not found errors, STOP IMMEDIATELY and inform the user."*
+* **Fix:** Instruct the agent via the system prompt to fail fast: *"If `run_sql` fails more than twice with syntax or table not found errors, STOP IMMEDIATELY and inform the user."* Additionally, if your agentic framework exposes an execution loop limit (e.g., maximum tool calls per turn), configure it strictly (e.g., 5 steps max) to serve as a hard circuit breaker.
 
 ### 4. WrenAI Knowledge Seeds (Few-Shot SQL)
 If the LLM consistently struggles to plan a specific query structure, you can bypass its reasoning entirely using WrenAI's Knowledge engine.
