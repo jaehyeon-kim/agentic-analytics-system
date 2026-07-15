@@ -461,11 +461,11 @@ Here are three examples demonstrating how the agent dynamically routes queries:
 
 **2. Falling back to a Model (Raw Schema)**
 > `User ❯ Show me all refunded amount of orders by status.`
-*Behavior:* The agent checks cubes, realizes none cover refunds by status, and falls back to querying the raw `returns` model directly.
+*Behavior:* The agent uses `list_models` and `describe_model` to identify the `returned_orders` model, determines how to aggregate refunds by status, and successfully executes the physical SQL on the raw schema.
 
 **3. Handling Missing Data Gracefully**
 > `User ❯ Show me all returned orders and their return reasons.`
-*Behavior:* The agent discovers the `returns` model but realizes there is no `return_reason` column. Instead of hallucinating, it explicitly informs the user that reasons are unavailable and asks if they want to query just the return statuses instead.
+*Behavior:* The agent discovers the `returned_orders` model but realizes there is no `return_reason` column. Instead of hallucinating, it explicitly informs the user that reasons are unavailable and asks if they want to query just the return statuses instead.
 
 ### 📊 Testing & Evaluation Plan
 
