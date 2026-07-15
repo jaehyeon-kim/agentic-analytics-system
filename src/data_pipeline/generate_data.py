@@ -31,7 +31,7 @@ def create_ecommerce_router(base_path: str):
             event_type = nested_value.pop("type", "unknown")
             data.update(nested_value)
             
-            if event_type in ["customer", "product", "order", "order_item", "return", "payment"]:
+            if event_type in ["customer", "product", "order", "order_item", "returned_order", "payment"]:
                 return f"{base_path}/{event_type}s/{event_type}s.parquet"
             
         return None
@@ -164,7 +164,7 @@ def run_simulation(args):
                 
                 if is_returned:
                     ret = {
-                        "type": "return",
+                        "type": "returned_order",
                         "return_id": return_id,
                         "order_id": order_id,
                         "customer_id": customer["customer_id"],

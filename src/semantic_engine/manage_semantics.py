@@ -56,7 +56,7 @@ MODELS = {
             {"name": "created_at", "type": "timestamp", "description": "Timestamp when the item was ordered."}
         ]
     },
-    "returns": {
+    "returned_orders": {
         "description": "Records of returned products and refunded amounts.",
         "columns": [
             {"name": "return_id", "type": "integer", "is_primary_key": True, "description": "Unique identifier for the return."},
@@ -125,9 +125,9 @@ RELATIONSHIPS = [
     {"name": "customers_to_orders", "models": ["customers", "orders"], "join": "customers.customer_id = orders.customer_id", "relationship_type": "one_to_many"},
     {"name": "orders_to_order_items", "models": ["orders", "order_items"], "join": "orders.order_id = order_items.order_id", "relationship_type": "one_to_many"},
     {"name": "orders_to_payments", "models": ["orders", "payments"], "join": "orders.order_id = payments.order_id", "relationship_type": "one_to_many"},
-    {"name": "orders_to_returns", "models": ["orders", "returns"], "join": "orders.order_id = returns.order_id", "relationship_type": "one_to_many"},
+    {"name": "orders_to_returned_orders", "models": ["orders", "returned_orders"], "join": "orders.order_id = returned_orders.order_id", "relationship_type": "one_to_many"},
     {"name": "products_to_order_items", "models": ["products", "order_items"], "join": "products.product_id = order_items.product_id", "relationship_type": "one_to_many"},
-    {"name": "products_to_returns", "models": ["products", "returns"], "join": "products.product_id = returns.product_id", "relationship_type": "one_to_many"},
+    {"name": "products_to_returned_orders", "models": ["products", "returned_orders"], "join": "products.product_id = returned_orders.product_id", "relationship_type": "one_to_many"},
 ]
 
 def init_project():

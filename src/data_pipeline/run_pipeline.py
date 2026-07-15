@@ -13,7 +13,7 @@ TABLE_DESCRIPTIONS = {
     "products": "Product catalog containing item categories, current prices, and stock levels. Join with order_items to see product sales performance.",
     "orders": "Main transaction records for ecommerce purchases. Contains total amount and order status. Join with customers and payments.",
     "order_items": "Line-item details for each order, showing exact quantities, unit prices, and return status for individual products.",
-    "returns": "Logs of returned items, refund amounts, and return processing status. Use this to analyze return rates per product or customer.",
+    "returned_orders": "Logs of returned items, refund amounts, and return processing status. Use this to analyze return rates per product or customer.",
     "payments": "Financial transaction logs for orders, tracking payment method, amount captured, and payment timestamp."
 }
 
@@ -43,7 +43,7 @@ def main():
         scheme="http"
     )
 
-    entities = ["customer", "product", "order", "order_item", "return", "payment"]
+    entities = ["customer", "product", "order", "order_item", "returned_order", "payment"]
     failures = []
 
     for entity in entities:
