@@ -11,4 +11,4 @@ valkey>=6.0.0
 redisvl
 opentelemetry-api
 python-dotenv
--e ../odctl
+git+https://github.com/jaehyeon-kim/odctl.git@v0.0.3
