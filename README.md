@@ -406,7 +406,7 @@ The orchestrator defaults to **Amazon Bedrock** for model access (using your AWS
 
 **Option A: Amazon Bedrock (Default)**
 
-TODO: Indicate it is an example configuration
+*(Example Configuration)*
 Set your AWS profile, region, and a Bedrock inference profile ID:
 
 ```env
@@ -422,7 +422,7 @@ AWS_REGION="ap-southeast-2"
 
 Set `AGENT_MODEL` and the corresponding API key for your chosen provider:
 
-TODO: indicate it is an example. 
+*(Example Configuration)*
 ```env
 AGENT_MODEL="gemini/gemini-3.1-flash-lite"
 GEMINI_API_KEY="your-gemini-key"
@@ -432,32 +432,11 @@ Then run the orchestrator with the `--use-api-key` flag (see below).
 
 </details>
 
-TODO: remove Option C completely!
-<details>
-<summary>Option C: 100% Local Execution (Ollama)</summary>
-
-To keep the orchestrator entirely local, private, and free, set `AGENT_MODEL` to `ollama/qwen2.5-coder:7b`.
-
-1. **Install Ollama:**
-   - On macOS with Homebrew: `brew install ollama`
-   - Or download directly from [ollama.com](https://ollama.com).
-2. **Start the Ollama Server:**
-   - Open a new terminal window and run: `ollama serve` (or `brew services start ollama`).
-3. **Pull the Model:**
-   - In your main terminal, download the recommended model:
-     ```bash
-     ollama pull qwen2.5-coder:7b
-     ```
-
-Then run the orchestrator with the `--use-api-key` flag (see below).
-
-</details>
-
 ### 🚀 Running the Agent
 
 With your LLM configured and your `.venv` activated, you can boot up the autonomous orchestrator:
 
-TODO: remind WREN_HOME is setup for module 2. If not, ask them to set it up!
+> **Prerequisite:** Ensure your `WREN_HOME` environment variable is exported correctly, as detailed in Module 2. If you haven't set it yet, run `export WREN_HOME=$(pwd)/src/semantic_engine/.wren_project` in your active terminal before starting the orchestrator.
 
 ```bash
 # 1. Activate your virtual environment (if not already active)
