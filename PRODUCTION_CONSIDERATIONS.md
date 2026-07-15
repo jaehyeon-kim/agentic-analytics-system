@@ -24,12 +24,29 @@ To safely scale, we decouple reads from writes:
 
 ## Agentic Safety & Guardrails
 
-When building autonomous agents that execute SQL on data warehouses, several practical safeguards must be established:
+When building autonomous agents that execute SQL on data warehouses, several practical safeguards must be established.
 
-* **Guardrails for "Runaway" Queries:** If the LLM hallucinates an unoptimized `CROSS JOIN` across large lakehouse tables, it can cause severe compute bottlenecks. The system must utilize **Trino Resource Groups** and strict query execution timeouts. If a query times out, the agent must be able to gracefully handle the error and attempt to rewrite it more efficiently (e.g., adding `LIMIT` or time-bounded `WHERE` clauses).
-* **Infinite Loop Prevention:** The Strands Agent is autonomous. If a query fails validation, it will retry. We must enforce strict `max_steps` or `max_retries` limits in the orchestrator to prevent runaway API token burn.
-* **Simplifying Complex JOINs with MDL:** Writing SQL that joins 5+ tables is a common failure point for LLMs. Instead of forcing the LLM to navigate the raw schema, we map physical Iceberg tables to logical YAML models using **WrenAI's Modeling Definition Language (MDL)**. This flattens the schema and provides explicit business definitions that the LLM cannot hallucinate.
-* **Governing Business Metrics via Cubes:** Rather than asking the LLM to hallucinate complex `GROUP BY` logic, we define standardized metrics (e.g., ARR, WAU) directly within WrenAI **Cubes**.
+### Full Table Scan Prevention
+
+Iceberg tables and Trino can scan entire datasets if proper partition or sort key filters are not included in the WHERE clause. This is a critical risk because the Strands agent generates queries autonomously — neither WrenAI cubes nor models enforce mandatory partition filters.
+
+**Cube queries** use a structured `CubeQuery` API with explicit `filters` and `time_dimensions` fields, which at least encourages filtering. However, nothing prevents the agent from querying `cube: daily_revenue, measures: [gross_revenue]` with no date range — causing Trino to scan every partition.
+
+**Model queries** are even more exposed. When the agent falls back from cubes to raw models, it writes freeform SQL via `run_sql`. There is no structural constraint preventing `SELECT * FROM customers` with no WHERE clause, LIMIT, or partition filter.
+
+*For a comprehensive breakdown of mitigation strategies across all four protection layers (prompt, semantic, engine, and storage), see **Appendix B: Query Scan Protection**.*
+
+### Infinite Loop Prevention
+
+The Strands Agent is autonomous. If a query fails validation, it will retry. We must enforce strict `max_steps` or `max_retries` limits in the orchestrator to prevent runaway API token burn.
+
+### Simplifying Complex JOINs with MDL
+
+Writing SQL that joins 5+ tables is a common failure point for LLMs. Instead of forcing the LLM to navigate the raw schema, we map physical Iceberg tables to logical YAML models using **WrenAI's Modeling Definition Language (MDL)**. This flattens the schema and provides explicit business definitions that the LLM cannot hallucinate.
+
+### Governing Business Metrics via Cubes
+
+Rather than asking the LLM to hallucinate complex `GROUP BY` logic, we define standardized metrics (e.g., ARR, WAU) directly within WrenAI **Cubes**.
 
 ## Performance & Semantic Caching
 
@@ -179,3 +196,149 @@ Here, S3 optimistic locking is particularly valuable. Two builders may produce c
 * idempotent query events
 
 S3 optimistic locking makes shared S3 LanceDB considerably more viable, especially because it now supplies Lance’s required atomic commit primitive. However, you should still retain the single-writer design for Wren because Wren’s higher-level mutation workflows are not atomic Lance transactions.
+
+---
+
+## Appendix B: Query Scan Protection
+
+Neither WrenAI cubes nor models enforce mandatory partition or sort key filters. The agent can generate queries that trigger full table scans on large Iceberg datasets, causing severe compute costs in Trino. This appendix details the risk and mitigation strategies across four protection layers.
+
+### Risk Assessment by Query Path
+
+| Query Path | Format | Partition Filter Enforced? | Risk Level |
+|:---|:---|:---|:---|
+| **Cube** (`query_cube`) | Structured `CubeQuery` API with `filters` and `time_dimensions` | No — but the structured API encourages it | Medium |
+| **Model** (`run_sql`) | Freeform SQL | No — completely open | High |
+
+WrenAI's `CubeQuery` API accepts runtime filters:
+
+```
+CubeQuery {
+    cube: String,
+    measures: Vec<String>,
+    dimensions: Vec<String>,
+    time_dimensions: Vec<TimeDimensionFilter>,  // date range + granularity
+    filters: Vec<CubeFilter>,                   // eq, gt, lt, in, contains, etc.
+    limit: Option<usize>,
+}
+```
+
+However, the cube **definition** (`metadata.yml`) has no `pre_filter`, `required_filter`, or `partition_key` field. Nothing prevents the agent from querying `daily_revenue` with `measures: [gross_revenue]` and no time filter.
+
+For model queries, the situation is worse. The agent writes arbitrary SQL via `run_sql` with no structural constraints. A query like `SELECT * FROM customers` would scan the entire table.
+
+### Layer 1: Prompt-Level Protection
+
+Update the orchestrator's system prompt to instruct the agent:
+
+```
+Query Safety Rules:
+- When querying cubes with time dimensions, ALWAYS include a date range filter.
+- ALWAYS include a LIMIT clause (default 1000) unless the user explicitly requests all rows.
+- NEVER use SELECT * — always specify the exact columns needed.
+- When querying time-series data, default to the last 90 days if the user does not specify a range.
+- ALWAYS run dry_plan before run_sql to validate the query plan.
+```
+
+This is the weakest layer — the LLM may ignore instructions, especially under complex multi-step reasoning. It should never be the only protection.
+
+### Layer 2: Semantic Layer Protection
+
+Use `dry_plan` as a validation gate. The agent's workflow should always be:
+
+1. Generate SQL
+2. Call `dry_plan` to validate
+3. Inspect the plan for full scan indicators
+4. Only then call `run_sql`
+
+A future enhancement could extend WrenAI's `dry_plan` response to include estimated scan size or a warning when no partition filter is detected. This would give the agent a structured signal to add filters before execution.
+
+Additionally, WrenAI cube definitions could benefit from a `required_filters` field:
+
+```yaml
+name: daily_revenue
+base_object: orders
+required_filters:
+  - dimension: order_date
+    message: "A date range is required to prevent full table scans."
+```
+
+This does not exist today and would be a valuable feature request to the WrenAI project.
+
+### Layer 3: Engine-Level Protection (Trino)
+
+Trino provides several built-in mechanisms to kill or reject expensive queries:
+
+**Resource Groups** — Assign the agent's Trino user to a resource group with strict limits:
+
+```json
+{
+  "name": "agent-queries",
+  "maxRunning": 5,
+  "hardConcurrencyLimit": 10,
+  "maxQueued": 20,
+  "softMemoryLimit": "1GB",
+  "hardMemoryLimit": "2GB",
+  "queryExpirationTimeout": "30s"
+}
+```
+
+**Session-level scan limits** — Reject queries that would scan too much data:
+
+```sql
+SET SESSION query_max_scan_physical_bytes = 1073741824;  -- 1 GB
+```
+
+If the query exceeds the scan limit, Trino returns an error. The agent receives this error and can retry with tighter filters (e.g., adding a date range or LIMIT).
+
+**Query execution timeout** — Hard kill after a time limit:
+
+```
+query.max-execution-time=30s
+```
+
+Engine-level protection is the strongest layer because it works regardless of what the agent generates. Even if the LLM ignores prompt instructions and the semantic layer has no filter enforcement, Trino will reject or kill the query before it consumes excessive resources.
+
+### Layer 4: Storage-Level Protection (Iceberg)
+
+Configure Iceberg tables with appropriate partitioning so that Trino's partition pruning activates automatically when a WHERE clause includes the partition column:
+
+```sql
+ALTER TABLE iceberg.ecommerce.orders
+SET PROPERTIES partitioning = ARRAY['month(created_at)'];
+```
+
+With monthly partitioning on `created_at`, a query filtered by `WHERE created_at >= DATE '2026-01-01'` will only scan the relevant partitions rather than the entire table. Combined with Iceberg's sorted file organization and Parquet predicate pushdown, this dramatically reduces I/O even when the agent's filters are broad.
+
+### Recommended Defense-in-Depth Strategy
+
+| Layer | Mechanism | Strength | Bypassable by LLM? |
+|:---|:---|:---|:---|
+| **Prompt** | System prompt query safety rules | Weak | Yes — LLM may ignore |
+| **Semantic** | `dry_plan` validation gate, future `required_filters` | Medium | Partially — agent could skip `dry_plan` |
+| **Engine** | Trino resource groups, scan limits, timeouts | Strong | No — enforced by Trino |
+| **Storage** | Iceberg partitioning and sort order | Strong | No — enforced by storage format |
+
+All four layers should be implemented together. Prompt and semantic protections reduce the frequency of bad queries. Engine and storage protections guarantee that bad queries cannot cause damage when they do occur.
+
+---
+
+## Appendix C: Agentic Troubleshooting & Hallucination Prevention
+
+When an LLM agent generates SQL autonomously, it can sometimes get caught in execution loops or hallucinate non-existent database structures. Below are the four most effective strategies for preventing and troubleshooting these failures.
+
+### 1. Reserved Keyword Trap
+If your semantic models share names with reserved SQL keywords (e.g., `returns`, `order`, `group`), the engine's SQL parser will throw a fatal syntax error. When the LLM encounters this syntax error, it often panics and attempts to "guess" the table name by hallucinating physical schema prefixes (e.g., `ecommerce.returns`, `pg_catalog.returns`), leading to an infinite failure loop.
+* **Fix:** Rename the model in your WrenAI MDL to something unambiguous (e.g., `returned_orders`), OR enforce a strict system prompt rule requiring the agent to always wrap model names in double-quotes (e.g., `SELECT * FROM "returns"`).
+
+### 2. MDL Descriptions as Guardrails
+The most effective way to stop an LLM from searching for non-existent columns is to explicitly declare their absence within the semantic schema itself.
+* **Fix:** Add explicit negative constraints to your `metadata.yml` descriptions. For example: `description: "Records of returned orders. NOTE: We do not track or store 'return reasons' anywhere in the database."` When the agent calls `describe_model`, it reads this and stops looking immediately.
+
+### 3. Bounding Agent Retries
+Frameworks like the Strands SDK allow agents to autonomously retry failed tool calls. If not bounded, a single syntax error can result in 10+ API calls, burning tokens and increasing latency.
+* **Fix:** Always set a strict `max_steps` (e.g., 5) on the agent instantiation. Additionally, instruct the agent via the system prompt: *"If `run_sql` fails more than twice with syntax or table not found errors, STOP IMMEDIATELY and inform the user."*
+
+### 4. WrenAI Knowledge Seeds (Few-Shot SQL)
+If the LLM consistently struggles to plan a specific query structure, you can bypass its reasoning entirely using WrenAI's Knowledge engine.
+* **Fix:** Add a Markdown file in the `knowledge/sql/` directory mapping the exact natural language phrase to a valid, tested SQL statement. When the user asks a similar question, WrenAI will intercept it and plan the correct SQL automatically, bypassing the LLM's query generation step.

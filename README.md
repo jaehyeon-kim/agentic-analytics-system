@@ -11,7 +11,7 @@ This repository provides an open-source stack for building an Agentic Data Syste
 **Benefits:**
 * **Accuracy:** Improves text-to-SQL reliability by constraining generation with explicit semantic models, relationships, business definitions and query validation.
 * **Modularity:** Compute, storage, and AI orchestration are decoupled, preventing vendor lock-in.
-* **Contextual Awareness:** Mem0 v3 provides built-in entity-linked graph memory over Qdrant, improving retrieval of related user preferences, people, events and conversational facts without requiring a separate graph database.
+* **Contextual Awareness:** Mem0 v3 provides built-in entity-linked graph memory over Valkey (Redis-compatible), improving retrieval of related user preferences, people, events and conversational facts without requiring a separate graph database.
 
 ## Table of Contents
 
@@ -42,7 +42,7 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
                                   |           v
                                   |     +-----------------------+
                                   |     |   Agent Vector DB     |
-                                  |     |       (Qdrant)        |
+                                  |     |       (Valkey)        |
                                   |     +-----------------------+
                                   v
                             +-----------------------+
@@ -58,21 +58,21 @@ This architecture updates and extends the concepts from the [AWS Agentic Analyti
 ```
 
 ### Component Breakdown
-* **Wren semantic source:** Generated MDL models, relationships and knowledge files.
-* **Wren retrieval index:** Local LanceDB, optionally on a persistent volume.
-* **Natural-language interpretation:** Strands agent.
-* **User preference memory:** Mem0 over Qdrant.
-* **Query execution:** Wren → Trino → Iceberg.
 
-WrenAI provides governed SQL planning using explicit models, relationships, business definitions and validation.
-* **Qdrant (Vector Engine):** The semantic database specifically powering the Mem0 agent layer, storing the mathematical representations (vectors) of user preferences and conversation histories.
-* **Amazon Athena / Trino / Iceberg (Historical Data):** The distributed batch engine for querying massive-scale lakehouse data.
+| Component | Technology | Role |
+|:---|:---|:---|
+| **Agent Orchestrator** | [Strands SDK](https://github.com/strands-agents/sdk-python) | Autonomous AI agent framework (by AWS) that interprets natural language, plans multi-step tool calls, and coordinates the entire query pipeline via the Model Context Protocol (MCP). |
+| **Semantic Engine** | [WrenAI](https://github.com/Canner/WrenAI) | Governed text-to-SQL compiler. Defines business logic as code using the Modeling Definition Language (MDL), plans physical SQL deterministically, and validates queries via `dry_plan` — preventing LLM hallucinations. |
+| **Semantic Retrieval Index** | LanceDB (embedded) | Local vector database for RAG-based table discovery. Embeds MDL schema descriptions so the agent can retrieve only the relevant tables for a given question. |
+| **Agent Memory** | Mem0 v3 over Valkey | Long-term conversational memory with entity-linked graph retrieval. Stores user preferences (e.g., "revenue means net revenue") across sessions. |
+| **Historical Data** | Trino / Apache Iceberg | Distributed SQL engine over open table format. The physical query execution layer for lakehouse data. |
+| **Object Storage** | SeaweedFS (S3-compatible) | Local S3-compatible storage backend for Iceberg table data and Parquet files. |
 
 *(Note: Real-time data integration using Tinybird/ClickHouse and dynamic query routing between hot and cold storage are currently out of scope for this foundational phase, but the architecture is designed to be easily extended to support them in the future.)*
 
 ## Query Flow
 
-1. **Context Check:** The orchestrator queries Mem0 (running on Qdrant) to pull long-term preferences and context.
+1. **Context Check:** The orchestrator queries Mem0 (running on Valkey) to pull long-term preferences and context.
 2. **Semantic Translation:** The request is sent to the semantic engine, which uses its MDL and LanceDB memory to map the request to accurate SQL.
 3. **Validation & Execution:** The orchestrator agent validates the physical schema against live metadata before executing the final SQL against the Iceberg cold storage and returning the structured data.
 
@@ -81,7 +81,7 @@ WrenAI provides governed SQL planning using explicit models, relationships, busi
       │
       ▼
 (1) Context Check
-[Strands Orchestrator] <---> [Mem0 / Qdrant]
+[Strands Orchestrator] <---> [Mem0 / Valkey]
       │
       ▼
 (2) Semantic Translation
@@ -248,22 +248,27 @@ In this module, you will secure the AI's logic to prevent SQL hallucinations and
 - Configure WrenAI's **Table Discovery** (RAG) pipeline to dynamically retrieve relevant tables from the semantic index. **Schema Validation** against live metadata is handled by the Strands agent in Module 3.
 - Create a "Golden Test Suite" of natural language questions and their exact SQL counterparts to evaluate execution accuracy.
 
-### 🧠 Agentic Brain Philosophy
+### 🧠 Two-Layer Agentic Architecture
 
 A major failure point of generative AI in data engineering is raw SQL hallucination. If an LLM is given raw tables and asked to join them on the fly, it will eventually generate incorrect business metrics.
 
-This module solves this by introducing a purpose-built AI Semantic Layer:
+This system solves the problem by separating concerns into two distinct layers:
 
-**Text-to-SQL Engine: `WrenAI`**
+**Layer 1 — Semantic Compiler: `WrenAI`**
 
-Rather than letting the AI figure out complex joins, we use **WrenAI** as the central semantic brain.
+WrenAI provides a **governed semantic compiler and execution boundary**. It does not interpret natural language or handle ambiguity. Instead, it:
+1. Defines business logic as code using the [Modeling Definition Language](https://docs.getwren.ai/oss/concepts/what_is_mdl) (MDL schema version 5) — models, relationships, cubes, and metrics.
+2. Plans physical SQL deterministically from logical semantic queries.
+3. Validates and dry-runs queries against the backend before execution.
 
-WrenAI provides a **governed semantic compiler and execution boundary**. It does not autonomously handle natural-language ambiguity—that is the job of the Strands Agent in Module 3. Instead, Wren's responsibilities are:
-1. Resolve logical models and explicit relationships.
-2. Plan physical SQL and apply business definitions.
-3. Validate and dry-run queries against the backend.
+**Layer 2 — Autonomous Agent: `Strands SDK`**
 
-By defining our business logic (e.g., "Net Revenue") using WrenAI's modern [Modeling Definition Language](https://docs.getwren.ai/oss/concepts/what_is_mdl) (MDL schema version 5), our Strands AI agent simply queries the WrenAI API. WrenAI dynamically plans the SQL, executes it against the underlying engine (Trino), and returns the deterministic result.
+The [Strands SDK](https://github.com/strands-agents/sdk-python) (by AWS) provides the autonomous reasoning layer. It:
+1. Interprets natural language and maps ambiguous terms (e.g., "revenue") to the correct WrenAI semantic objects (cubes, models, views).
+2. Orchestrates multi-step tool calls to WrenAI's MCP server — listing cubes, describing schemas, validating SQL via `dry_plan`, and executing queries.
+3. Maintains conversational context via Mem0 to remember user preferences across sessions.
+
+By combining these layers, the LLM never sees raw database tables. It only interacts with WrenAI's governed semantic API, which constrains its output to valid, deterministic SQL.
 
 ### 🛡️ Production Architecture
 
@@ -375,9 +380,9 @@ In this module, you will bring the AI orchestrator to life by connecting it to y
 ### Objectives
 
 - Leverage WrenAI's native MCP server (`wren serve mcp`) to securely expose the semantic layer to the AI agent, removing the need for manual database connection boilerplate.
-- Build a local Python CLI using the **Strands** framework.
-- Connect Strands to a local **Ollama** LLM (e.g., `qwen2.5-coder:7b`).
-- Enable the agent to autonomously reason about user questions, explore the schema via `wren://mdl` resources, validate queries using `dry_plan`, and return data-driven answers.
+- Build a Python CLI agent using the **Strands SDK** — AWS's open-source agentic AI framework that natively supports tool calling via the Model Context Protocol (MCP).
+- Connect Strands to **Amazon Bedrock** (default) or any LiteLLM-compatible model (Gemini, OpenAI, Ollama).
+- The Strands agent autonomously spawns WrenAI's MCP server (`wren serve mcp`) as a subprocess, discovers available semantic tools, and orchestrates multi-step query planning — from schema exploration to SQL validation and execution — without hardcoded logic.
 
 ### 🏗️ Text-to-SQL Architecture & Validation
 
@@ -388,23 +393,50 @@ Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approa
 
 ### Incorporating Mem0
 
-This module integrates Mem0 v3 over Qdrant for long-term memory, entity-linked retrieval and improved cross-memory reasoning.
+This module integrates Mem0 v3 over Valkey (Redis-compatible) for long-term memory, entity-linked retrieval and improved cross-memory reasoning.
 
 *(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
 
-### 🚀 Setting up the LLM (Claude, Gemini, or Ollama)
+### 🚀 Setting up the LLM
 
-The Strands orchestrator is fully **LLM-neutral** via LiteLLM and dynamically routes API calls based on your `.env` configuration.
+The orchestrator defaults to **Amazon Bedrock** for model access (using your AWS credentials), with an optional **LiteLLM API key** fallback for providers like Gemini, OpenAI, or local Ollama.
 
-To use the cloud LLMs (Claude or Gemini):
 1. Copy the environment template: `cp src/agent/.env.example src/agent/.env`
-2. Add your respective API key (e.g., `ANTHROPIC_API_KEY="..."`).
-3. Set `AGENT_MODEL="claude-3-5-sonnet-20240620"`, `gemini/gemini-3.1-flash-lite`, or another supported model string.
+2. Configure your preferred backend:
+
+**Option A: Amazon Bedrock (Default)**
+
+TODO: Indicate it is an example configuration
+Set your AWS profile, region, and a Bedrock inference profile ID:
+
+```env
+BEDROCK_MODEL_ID="apac.anthropic.claude-sonnet-4-20250514-v1:0"
+AWS_PROFILE="default"
+AWS_REGION="ap-southeast-2"
+```
+
+> **Tip:** Use `aws bedrock list-inference-profiles --region <region>` to find available inference profile IDs for your account.
 
 <details>
-<summary>Alternative: 100% Local Execution (Ollama)</summary>
+<summary>Option B: LiteLLM with API Keys</summary>
 
-To keep the orchestrator entirely local, private, and free, you can switch the `AGENT_MODEL` to `ollama/qwen2.5-coder:7b`.
+Set `AGENT_MODEL` and the corresponding API key for your chosen provider:
+
+TODO: indicate it is an example. 
+```env
+AGENT_MODEL="gemini/gemini-3.1-flash-lite"
+GEMINI_API_KEY="your-gemini-key"
+```
+
+Then run the orchestrator with the `--use-api-key` flag (see below).
+
+</details>
+
+TODO: remove Option C completely!
+<details>
+<summary>Option C: 100% Local Execution (Ollama)</summary>
+
+To keep the orchestrator entirely local, private, and free, set `AGENT_MODEL` to `ollama/qwen2.5-coder:7b`.
 
 1. **Install Ollama:**
    - On macOS with Homebrew: `brew install ollama`
@@ -416,21 +448,45 @@ To keep the orchestrator entirely local, private, and free, you can switch the `
      ```bash
      ollama pull qwen2.5-coder:7b
      ```
+
+Then run the orchestrator with the `--use-api-key` flag (see below).
+
 </details>
 
 ### 🚀 Running the Agent
 
 With your LLM configured and your `.venv` activated, you can boot up the autonomous orchestrator:
 
+TODO: remind WREN_HOME is setup for module 2. If not, ask them to set it up!
+
 ```bash
 # 1. Activate your virtual environment (if not already active)
 source .venv/bin/activate
 
-# 2. Run the agent
+# 2a. Run with Bedrock (default)
 python src/agent/orchestrator.py
+
+# 2b. Run with LiteLLM API keys (Gemini, OpenAI, Ollama, etc.)
+python src/agent/orchestrator.py --use-api-key
 ```
 
 Once you see `🧠 Orchestrator is online. Type 'exit' to quit.`, you can start asking natural language questions about your business data! The agent will autonomously connect to the WrenAI MCP server, explore the semantic schema, and generate/execute the physical SQL.
+
+#### Example Queries & Expected Behavior
+
+Here are three examples demonstrating how the agent dynamically routes queries:
+
+**1. Hitting a Cube (Governed Metrics)**
+> `User ❯ What is the revenue for orders that are delivered?`
+*Behavior:* The agent discovers the `daily_revenue` cube, maps "revenue" to `gross_revenue`, and queries it. The LLM does not write the `GROUP BY` or `SUM()` logic — WrenAI compiles the deterministic SQL defined in the cube.
+
+**2. Falling back to a Model (Raw Schema)**
+> `User ❯ Show me all refunded amount of orders by status.`
+*Behavior:* The agent checks cubes, realizes none cover refunds by status, and falls back to querying the raw `returns` model directly.
+
+**3. Handling Missing Data Gracefully**
+> `User ❯ Show me all returned orders and their return reasons.`
+*Behavior:* The agent discovers the `returns` model but realizes there is no `return_reason` column. Instead of hallucinating, it explicitly informs the user that reasons are unavailable and asks if they want to query just the return statuses instead.
 
 ### 📊 Testing & Evaluation Plan
 
