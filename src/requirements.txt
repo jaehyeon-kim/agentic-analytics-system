@@ -7,5 +7,8 @@ litellm[proxy]
 boto3
 mem0ai[nlp]
 fastembed
-redis>=5.0.0
+valkey>=6.0.0
+redisvl
+opentelemetry-api
+python-dotenv
 -e ../odctl

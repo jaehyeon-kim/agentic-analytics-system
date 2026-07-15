@@ -70,6 +70,12 @@ async def main():
         default=False,
         help="Use LiteLLM with API keys instead of the default Amazon Bedrock.",
     )
+    parser.add_argument(
+        "--use-memory",
+        action="store_true",
+        default=False,
+        help="Enable Mem0 long-term memory for the agent.",
+    )
     args = parser.parse_args()
 
     # Load environment variables from .env if present
@@ -123,10 +129,62 @@ You have access to the WrenAI semantic layer via MCP tools.
    CRITICAL: If `dry_plan` or `run_sql` fails more than twice with syntax or table not found errors, STOP IMMEDIATELY. Do not keep retrying. Inform the user of the error.
 4. Execute the SQL and return the precise answer."""
 
-    # Note: Mem0 memory manager is specifically excluded here as requested.
+    # Assemble tools
+    tools_list = [mcp_clients]
+
+    # Optional Mem0 Integration
+    if args.use_memory:
+        try:
+            from mem0 import Memory
+            from strands.tools.decorator import tool
+            
+            logger.info("🧠 Initializing Mem0 Long-Term Memory via Valkey...")
+            
+            # Configure Mem0 to use Valkey (Redis-compatible)
+            valkey_url = os.environ.get("VALKEY_URL", "redis://user:password@localhost:6379")
+            mem0_config = {
+                "vector_store": {
+                    "provider": "redis",
+                    "config": {
+                        "redis_url": valkey_url
+                    }
+                },
+                "embedder": {
+                    "provider": "fastembed",
+                    "config": {
+                        "model": "BAAI/bge-small-en-v1.5"
+                    }
+                }
+            }
+            mem0_client = Memory.from_config(mem0_config)
+
+            @tool(description="MANDATORY: Call this tool IMMEDIATELY when the user states a rule, preference, or instruction for future queries (e.g., 'I always want...', 'Never do...'). Do not validate the schema first.")
+            def save_user_preference_to_memory(preference: str) -> str:
+                mem0_client.add(preference, user_id="user")
+                return f"Successfully saved preference: {preference}"
+                
+            @tool(description="Search long-term memory for facts or context from past conversations.")
+            def search_memory(query: str) -> str:
+                results = mem0_client.search(query, user_id="user")
+                return str(results)
+
+            tools_list.extend([save_user_preference_to_memory, search_memory])
+            
+            memory_directive = (
+                "CRITICAL OVERRIDE: If the user provides a preference, rule, or instruction for how to handle future queries (e.g., 'I always want...', 'Assume that...'), "
+                "you MUST immediately execute the `save_user_preference_to_memory` tool. DO NOT invoke ANY WrenAI MCP schema tools (like list_cubes or list_models) first. Just save it and reply.\n\n"
+            )
+            system_prompt = memory_directive + system_prompt
+            
+        except ImportError as e:
+            logger.warning(f"Failed to load Mem0 or its dependencies. Error: {e}")
+            logger.warning("Make sure 'mem0ai', 'redis', and 'fastembed' are properly installed.")
+    else:
+        logger.info("🧠 Mem0 memory is disabled (ephemeral mode).")
+
     agent = Agent(
         model=llm,
-        tools=mcp_clients,
+        tools=tools_list,
         system_prompt=system_prompt
     )
 

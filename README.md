@@ -128,7 +128,7 @@ Initialize the Open Data Stack workspace and launch the core components (Trino, 
 
 ```bash
 odctl init
-odctl up trino storage catalog
+odctl up trino storage catalog valkey
 ```
 
 ### 📊 Step 2: Generate the Historical Data
@@ -391,12 +391,6 @@ Based on modern LLM architecture patterns (e.g., [Pinterest's Text-to-SQL approa
 1. **Table Discovery (RAG)** *[Implemented in Module 2]*: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
 2. **Schema & Syntax Validation (Native MCP Tools)** *[Implemented in Module 3]*: The Strands agent utilizes WrenAI's native MCP endpoints to cross-reference the MDL and validate generated SQL using the `dry_plan` tool. This tests the logic and syntax against live metadata without executing a potentially expensive physical query, acting as a structural safeguard against hallucinations.
 
-### Incorporating Mem0
-
-This module integrates Mem0 v3 over Valkey (Redis-compatible) for long-term memory, entity-linked retrieval and improved cross-memory reasoning.
-
-*(Note: Dynamic query routing between real-time and historical databases can be implemented as an extension.)*
-
 ### 🚀 Setting up the LLM
 
 The orchestrator defaults to **Amazon Bedrock** for model access (using your AWS credentials), with an optional **LiteLLM API key** fallback for providers like Gemini, OpenAI, or local Ollama.
@@ -499,3 +493,37 @@ python evaluations/evaluate_semantics.py --limit 3
 python evaluations/evaluate_semantics.py --use-api-key
 ```
 Results, including the agent's full response and the judge's reasoning, are automatically saved to `evaluations/evaluation_results.json`.
+
+---
+
+## Incorporating Mem0 (Long-Term Agentic Memory)
+
+One of the most powerful features of an autonomous agent is the ability to remember organizational context across sessions. This system integrates **Mem0 v3** over **Valkey** (a Redis alternative) as the agent's long-term vector graph memory, utilizing **FastEmbed** to compute embeddings locally without relying on expensive OpenAI APIs.
+
+*(Note: Dynamic query routing between real-time and historical databases based on contextual history can be implemented as an extension of this setup.)*
+
+### 🧠 The Problem: LLM Hallucination on Subjective Business Logic
+When an LLM is presented with an ambiguous question, it will often try to "help" by guessing the business logic rather than failing.
+
+For example, if you ask the agent without memory enabled:
+> `User ❯ What is our total revenue for successful orders?`
+
+**What happens WITHOUT memory?**
+The agent parses the schema, finds the `orders` table, and notices a `status` column. Because it doesn't know what a "successful" order is at your specific company, it hallucinates a subjective definition:
+> `Agent ❯ The total revenue for successful orders (defined as those with a status of 'delivered' or 'shipped') is $83,338,914.51.`
+
+This is incredibly dangerous in an enterprise setting, as the agent confidently returned an incorrect financial metric.
+
+### 🛡️ The Solution: Valkey-Powered Memory Overrides
+By booting the orchestrator with the memory flag enabled (`python src/agent/orchestrator.py --use-memory`), we inject the `save_user_preference_to_memory` tool and a **CRITICAL OVERRIDE** directive into the agent's prompt. 
+
+This allows you to explicitly teach the agent your organization's business rules once:
+> `User ❯ Assume that when I say 'successful orders', I am referring strictly to orders where the status is 'delivered'.`
+
+**What happens WITH memory?**
+1. **Immediate Storage**: The agent bypasses the semantic schema completely and immediately invokes the memory tool. The rule is vectorized by FastEmbed and permanently saved into the `odctl` Valkey instance.
+2. **Contextual Retrieval**: The next time you ask *"What is our total revenue for successful orders?"*, the agent queries Mem0 first. It retrieves your exact definition of "successful orders".
+3. **Deterministic Execution**: The agent automatically applies the filter `status = 'delivered'` to its physical SQL plan, returning the correct, non-hallucinated revenue:
+> `Agent ❯ The total revenue for successful orders (where the status is 'delivered') is $74,595,910.92.`
+
+This memory architecture ensures the AI adapts to your company's unique jargon and business definitions without requiring you to manually update the underlying semantic model for every localized colloquialism.
