@@ -4,7 +4,8 @@ wrenai[trino,memory,main,mcp]
 strands-agents
 strands-agents-tools
 litellm[proxy]
+boto3
 mem0ai[nlp]
 fastembed
-qdrant-client>=1.12.0
+redis>=5.0.0
 -e ../odctl
