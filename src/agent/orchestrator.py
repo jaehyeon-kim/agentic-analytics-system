@@ -145,7 +145,7 @@ You have access to the WrenAI semantic layer via MCP tools.
 
             # The agent's default callback handler streams the text automatically!
             # We just await the invocation, then print a newline for clean formatting.
-            response = await agent.invoke_async(user_input)
+            await agent.invoke_async(user_input)
             print("\n")
 
         except KeyboardInterrupt:

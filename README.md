@@ -469,20 +469,33 @@ Here are three examples demonstrating how the agent dynamically routes queries:
 
 ### 📊 Testing & Evaluation Plan
 
-To measure the success of the Agentic Orchestrator, we will evaluate it using methodology inspired by industry benchmarks like [Spider](https://yale-lily.github.io/spider) and [BIRD](https://bird-bench.github.io/), focusing on **Execution Accuracy (EX)** over our internal E-commerce batch data.
+To measure the success of the Agentic Orchestrator, we evaluate it across three distinct dimensions. Because the system relies on an autonomous agent rather than a simple Text-to-SQL script, we must evaluate its decision-making (Tool Selection), its accuracy (Execution), and its safety (Negative Testing).
 
 **Testing Methodology:**
-1. **Create a Golden Test Suite:** Develop a set of 20–50 natural language questions based on the batch data (e.g., *"What is the total revenue for users who bought more than 3 items?"*).
-2. **Define Ground Truth SQL:** Manually write and verify the exact, correct SQL query for each question to serve as the ground truth.
-3. **Execute via Agent:** Pass the natural language questions through the Strands SDK Orchestrator and WrenAI pipeline.
-4. **Calculate Execution Accuracy (EX):** Execute both the generated SQL and the Ground Truth SQL against Trino. Compare the resulting data payloads. A perfect match of the output data (not just string matching the SQL query) counts as a success.
+1. **Cube Routing (Tool Selection):** When a user asks for governed metrics (e.g., "What was our net revenue?"), the agent must invoke the `query_cube` API. We evaluate this by verifying the agent selected the correct tool and passed the correct structured payload, avoiding raw SQL generation entirely.
+2. **Execution Accuracy (EX):** When governed metrics don't exist, the agent falls back to generating SQL against the raw semantic models. We evaluate this by executing both the agent's generated SQL and our Ground Truth SQL against Trino. A perfect match of the resulting data payloads counts as a success.
+3. **Graceful Failure (Negative Testing):** The most dangerous thing an agent can do is hallucinate. We feed the agent impossible queries (e.g., asking for a non-existent `return_reason` column) and use an LLM-as-a-judge to verify that the agent gracefully refused to answer rather than hallucinating fake data.
 
-<details>
-<summary>Test Suite Coverage</summary>
+**Test Suite Coverage**
 
-The evaluation suite ([`evaluations/golden_test_suite.json`](evaluations/golden_test_suite.json)) consists of rigorous test cases specifically designed to benchmark the AI's semantic reasoning capabilities:
-- **Raw Table Navigation:** Tests the AI's ability to execute complex 3+ table JOINs, subqueries, and aggregations across the foundational Lakehouse schemas (e.g. joining `orders`, `order_items`, and `products`).
-- **Semantic Routing:** Evaluates whether the AI correctly routes high-level business questions (e.g., "What was our net revenue?") to the pre-aggregated Lakehouse metric views (`daily_revenue`, `customer_lifetime_value`, `product_performance`) instead of attempting to blindly hallucinate raw schema calculations.
-- **Edge Cases:** Challenges the AI with NULL value tracking (`LEFT JOIN`), complex Date logic, and cross-layer queries (e.g. joining an aggregated metric view with a raw dimension table).
+The evaluation suite ([`evaluations/golden_test_suite.json`](evaluations/golden_test_suite.json)) is designed to benchmark the AI's agentic reasoning:
+- **Cube Discovery:** Tests if the AI correctly routes high-level business questions to governed metrics.
+- **Raw Table Navigation:** Tests the AI's ability to execute complex JOINs and aggregations across the underlying semantic models when cubes aren't available.
+- **Hallucination Prevention:** Challenges the AI with missing data scenarios to ensure strict adherence to the schema.
 
-</details>
+**Running the Evaluation Harness**
+
+The repository includes a fully automated evaluation script (`evaluations/evaluate_semantics.py`) that executes the golden test suite.
+For each test case, the script spins up an isolated orchestrator agent, captures its output, and then uses a separate, tool-less **LLM-as-a-judge** to grade the response (PASS/FAIL) against the strict constraints.
+
+```bash
+# Run the full 20-case test suite
+python evaluations/evaluate_semantics.py
+
+# Optional: Run only a subset of tests for quick smoke-testing
+python evaluations/evaluate_semantics.py --limit 3
+
+# Optional: Bypass AWS Bedrock and use the API Key fallback
+python evaluations/evaluate_semantics.py --use-api-key
+```
+Results, including the agent's full response and the judge's reasoning, are automatically saved to `evaluations/evaluation_results.json`.
