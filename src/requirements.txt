@@ -1,5 +1,3 @@
-dynamic-des[parquet]
-pyiceberg[s3fs]
 wrenai[trino,memory,main,mcp]
 strands-agents
 strands-agents-tools
@@ -11,4 +9,6 @@ valkey>=6.0.0
 redisvl
 opentelemetry-api
 python-dotenv
-git+https://github.com/jaehyeon-kim/odctl.git@v0.0.10
+dynamic-des[parquet]
+pyiceberg[s3fs]
+odctl

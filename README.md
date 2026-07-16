@@ -2,31 +2,33 @@
 
 A local, open-source stack for building conversational data agents and semantic reasoning workflows over an Iceberg Lakehouse.
 
-## Motivation and Benefits
+## Motivation
 
-This architecture updates and extends the concepts from the [AWS Agentic Analytics Ready Lakehouse Workshop](https://catalog.workshops.aws/agentic-analytics-lakehouse/en-US), replacing managed cloud services with robust open-source alternatives.
+Generative AI has made conversational interfaces for analytics increasingly practical. However, direct text-to-SQL systems remain difficult to operate reliably in production. Database schemas describe tables, columns and data types, but they rarely capture canonical datasets, approved join paths, governed metrics or the intended meaning of business terms such as revenue, active customer or returned order.
 
-Modern data ecosystems require systems that can autonomously reason about data, translate natural language into accurate queries, and maintain conversational context. However, tightly coupled, managed cloud AI services often struggle with complex business logic and create friction when integrating external databases.
+A semantic layer addresses this gap by defining models, relationships, reusable metrics, business rules and approved query patterns independently of the language model. The agent can then reason over governed business concepts rather than attempting to infer business logic directly from raw database schemas.
 
-This repository provides an open-source stack for building an Agentic Data System.
+This project extends the concepts demonstrated in the AWS Agentic Analytics Ready Lakehouse Workshop using a local, open-source and heterogeneous data stack. It does not assume that managed cloud services are inadequate; rather, it explores how independently developed technologies such as Strands, WrenAI, Trino, Apache Iceberg and external analytical platforms can be combined through open interfaces.
 
-**Benefits:**
-* **Accuracy:** Improves semantic reasoning reliability by constraining query generation with explicit semantic models, relationships, business definitions and query validation.
-* **Modularity:** Compute, storage, and AI orchestration are decoupled, preventing vendor lock-in.
-* **Contextual Awareness:** Mem0 v3 provides built-in entity-linked graph memory over Valkey (Redis-compatible), improving retrieval of related user preferences, people, events and conversational facts without requiring a separate graph database.
+The result is a reference implementation for semantic-layer-backed conversational analytics, with separate components for agent orchestration, semantic planning, long-term user memory and physical query execution.
 
 ## Evaluating Semantic Layer AI Solutions
 
 When building an autonomous data assistant, the biggest challenge is translating ambiguous natural language into deterministic, accurate SQL. There are several popular tools in the ecosystem attempting to solve this:
 
 *   **[WrenAI](https://www.getwren.ai/)**: A robust semantic engine that combines an AI semantic reasoning interface with a deterministic Semantic Layer (MDL). It bridges the gap between RAG (for query recall) and strict data governance (Cubes, Models, and Relationships). 
-*   **[Vanna AI](https://vanna.ai/)**: An open-source, Python-based RAG approach for conversational data querying. It relies heavily on training a vector database with your schema, documentation, and historical queries. While highly flexible and easy to deploy as a Python library, it lacks a strict deterministic semantic modeling layer (like Cubes or Metrics). This means it relies entirely on the LLM's reasoning capabilities, which can lead to hallucinations when calculating complex, multi-join metrics that aren't explicitly in the training set.
-*   **[Nao](https://getnao.io/)**: An AI-native data assistant focused heavily on business users. It often integrates into communication platforms (like Slack or Teams) to answer data questions out-of-the-box. It leans more towards a managed SaaS experience, prioritizing user experience over deep programmatic integration and open-source infrastructure control.
+*   **[Vanna AI](https://vanna.ai/)**: Vanna provides a flexible SQL-agent framework with tool memory and user-aware permissions. WrenAI was selected because this project specifically required an explicit semantic project containing models, relationships, cubes, business rules and reviewed NL-to-SQL examples.
+*   **[Nao](https://getnao.io/)**: Nao is a broader analytics-agent and context-engineering platform, with strong context ingestion, testing and end-user deployment capabilities. WrenAI was selected because this project wanted a focused semantic compiler and execution layer that could be embedded behind a separate Strands orchestrator.
+*   **[MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow)**: MetricFlow was considered for governed metric definitions, but it was excluded because the target environment includes tables, views and materialized objects that are not necessarily managed as dbt models. The project required a semantic layer that could map directly onto the existing Trino, Iceberg and potentially ClickHouse environment.
 
-**Why WrenAI is the right choice for this stack:**
-1.  **Governed Semantic Layer**: Instead of guessing SQL against raw tables, WrenAI relies on explicit, deterministic definitions. If you define `net_revenue` as `gross_sales - refunds` inside a Cube, the LLM doesn't have to guess the calculation; it simply routes to the Cube.
-2.  **RAG + Semantic Search**: WrenAI natively integrates LanceDB. By feeding it Golden SQL examples, it embeds them into memory. When a user asks a similar question, WrenAI recalls the exact query structure, ensuring few-shot learning directly inside the semantic engine.
-3.  **Native MCP Server**: WrenAI ships with a native Model Context Protocol (MCP) server. This makes it incredibly easy for our Strands orchestrator agent to introspect the schema, discover cubes, and execute queries using standardized tools (`recall_queries`, `query_cube`, `run_sql`) without requiring complex custom integrations.
+**Why WrenAI was selected for this project:**
+1. Explicit MDL models, relationships, views and cubes.
+2. Direct Trino and ClickHouse connectors.
+3. File-based, reviewable project context.
+4. Separate business rules and approved SQL examples.
+5. Native MCP tools.
+6. Local, rebuildable LanceDB retrieval.
+7. Deterministic semantic SQL expansion after the agent has selected the logical query.
 
 ## Table of Contents
 
@@ -80,7 +82,7 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
 | **Agent Orchestrator** | [Strands SDK](https://github.com/strands-agents/sdk-python) | Autonomous AI agent framework (by AWS) that interprets natural language, plans multi-step tool calls, and coordinates the entire query pipeline via the Model Context Protocol (MCP). |
 | **Semantic Engine** | [WrenAI](https://github.com/Canner/WrenAI) | Governed semantic query compiler. Defines business logic as code using the Modeling Definition Language (MDL), plans physical SQL deterministically, and validates queries via `dry_plan` - preventing LLM hallucinations. |
 | **Semantic Retrieval Index** | LanceDB (embedded) | Local vector database for RAG-based table discovery. Embeds MDL schema descriptions so the agent can retrieve only the relevant tables for a given question. |
-| **Agent Memory** | Mem0 v3 over Valkey | Long-term conversational memory with entity-linked graph retrieval. Stores user preferences (e.g., "revenue means net revenue") across sessions. |
+| **Agent Memory** | Mem0 v3 over Valkey | Persistent user and conversational memory using hybrid retrieval across semantic similarity, keyword matching and built-in entity linking. Mem0 stores entity embeddings in a parallel Valkey collection and boosts memories connected through shared entities, without requiring a separate graph database. |
 | **Historical Data** | Trino / Apache Iceberg | Distributed SQL engine over open table format. The physical query execution layer for lakehouse data. |
 | **Object Storage** | SeaweedFS (S3-compatible) | Local S3-compatible storage backend for Iceberg table data and Parquet files. |
 
@@ -105,7 +107,7 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
       │
       ▼
 (3) Execution
-[Athena / Trino / Iceberg]
+[Trino / Iceberg]
       │
       ▼
 [Structured Data]
@@ -115,13 +117,14 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
 
 ## Prerequisites
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/) and [Ollama](https://ollama.com/), then create and activate a local virtual environment using Python 3.12, and install the required dependencies (which includes the `odctl` orchestrator). Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support does not yet provide wheels for Python 3.13+.
+Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then create and activate a local virtual environment using Python 3.12, and install the required dependencies (which includes the `odctl` orchestrator). Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support does not yet provide wheels for Python 3.13+.
 
 ```bash
 uv python install 3.12
 uv venv --python 3.12
 source .venv/bin/activate
 uv pip install -r src/requirements.txt
+python -m spacy download en_core_web_sm
 ```
 
 ---
@@ -272,33 +275,35 @@ This system solves the problem by separating concerns into two distinct layers:
 
 **Layer 1 - Semantic Compiler: `WrenAI`**
 
-WrenAI provides a **governed semantic compiler and execution boundary**. It does not interpret natural language or handle ambiguity. Instead, it:
-1. Defines business logic as code using the [Modeling Definition Language](https://docs.getwren.ai/oss/concepts/what_is_mdl) (MDL schema version 5) - models, relationships, cubes, and metrics.
-2. Plans physical SQL deterministically from logical semantic queries.
-3. Validates and dry-runs queries against the backend before execution.
+WrenAI provides a **governed semantic compiler and execution boundary**. It:
+1. Supplies governed context (MDL models, relationships, cubes, and metrics).
+2. Expands modeled SQL through MDL (`dry_plan`).
+3. Generates cube SQL, validates queries against the live backend (`dry_run`), and executes them through Trino (`run_sql`).
 
 **Layer 2 - Autonomous Agent: `Strands SDK`**
 
 The [Strands SDK](https://github.com/strands-agents/sdk-python) (by AWS) provides the autonomous reasoning layer. It:
-1. Interprets natural language and maps ambiguous terms (e.g., "revenue") to the correct WrenAI semantic objects (cubes, models, views).
-2. Orchestrates multi-step tool calls to WrenAI's MCP server - listing cubes, describing schemas, validating SQL via `dry_plan`, and executing queries.
-3. Maintains conversational context via Mem0 to remember user preferences across sessions.
+1. Interprets the user question.
+2. Calls tools like `get_instructions`, `get_context`, and `recall_queries`.
+3. Selects a cube or constructs modeled SQL.
+4. Decides which execution tool to invoke (`dry_plan`, `dry_run`, or `run_sql`).
+5. Maintains conversational context via Mem0 to remember user preferences across sessions.
 
-By combining these layers, the LLM never sees raw database tables. It only interacts with WrenAI's governed semantic API, which constrains its output to valid, deterministic SQL.
+By combining these layers, the LLM never sees raw database tables. It only interacts with WrenAI's governed semantic API, which constrains available models and joins, improving consistency and reducing hallucination risk.
 
 ### 🛡️ Production Architecture
 
-When migrating this local agentic semantic layer to a distributed, multi-tenant production environment, several safeguards and architectural changes must be made (e.g., S3-backed LanceDB, Kafka writing queues, semantic caching, and LLM guardrails). 
+When migrating this local agentic semantic layer to a distributed, multi-tenant production environment, several safeguards and architectural changes must be made. Production deployment keeps Wren runtime memory read-only and local to each replica. Candidate queries are captured by the application, evaluated out of band, promoted into the version-controlled Wren project, and distributed through normal deployment. 
 
 For a complete breakdown of how to scale this system securely, see our [Production Architecture & Considerations Guide](PRODUCTION_CONSIDERATIONS.md).
 
 ### 💾 Production Persistence
 
-The entire `.wren_project` directory is intentionally disposable.
+For this PoC, the `.wren_project` directory is disposable because `manage_semantics.py` regenerates it. 
 
-The local `.wren/memory` directory is a derived LanceDB index. It can optionally be mounted on a persistent volume to avoid rebuilding it after ordinary container restarts.
-
-Approved semantic reasoning examples (Golden SQL) are represented by `knowledge/sql/*.md`. For this PoC, those files are generated during project initialization and are also disposable.
+For production, project persistence should be split:
+* **Version-Controlled Source:** `models/`, `cubes/`, `relationships.yml`, `knowledge/rules/`, and `knowledge/sql/` should be managed as code.
+* **Generated Artifacts:** `target/mdl.json` and `.wren/memory/` are disposable generated artifacts. The `.wren/memory` directory can optionally be mounted on a persistent volume to avoid rebuilding it after ordinary container restarts.
 
 ### 🚀 Managing Semantic Engine
 
@@ -335,7 +340,7 @@ python src/semantic_engine/manage_semantics.py add all
 
 #### Context Compilation (build)
 
-WrenAI doesn't read the scattered YAML files at runtime. Instead, this command natively compiles all the YAML definitions, relationships, and business rules into a single, highly optimized `mdl.json` manifest. The Wren execution engine uses this manifest to plan physical SQL queries deterministically.
+`wren context build` compiles models, relationships, views, and cubes into `target/mdl.json`. Business rules remain Markdown files under `knowledge/rules/` and are retrieved separately through `get_instructions`.
 
 ```bash
 python src/semantic_engine/manage_semantics.py build
@@ -343,7 +348,7 @@ python src/semantic_engine/manage_semantics.py build
 
 #### Memory Indexing (index)
 
-If you have hundreds of models and approved query patterns, you cannot fit the entire schema and business context into an LLM's prompt. Wren solves this by building a local vector database using **LanceDB** to act as a **retrieval accelerator**. This command reads the table descriptions from your MDL files, as well as the rules and approved SQL examples from the `knowledge/` directory, and embeds them.
+If you have hundreds of models and approved query patterns, you cannot fit the entire schema and business context into an LLM's prompt. Wren solves this by building a local vector database using **LanceDB** to act as a **retrieval accelerator**. This command reads the table descriptions from your MDL files and the approved SQL examples from the `knowledge/sql/` directory, and embeds them. (Note: Business rules from `knowledge/rules/` are read separately via context instructions and are not embedded by the memory index).
 
 ```bash
 python src/semantic_engine/manage_semantics.py index
@@ -356,10 +361,10 @@ python src/semantic_engine/manage_semantics.py index
 ```
 
 **How Memory is Structured:**
-When you run the index command, WrenAI breaks your project into three distinct vectors:
-1. **Schema Items (64 items):** This is the structural index. Wren parses the MDL files and embeds every Model, View, Cube, and their descriptive metadata. This allows the LLM to search for relevant tables and columns by meaning rather than exact name matching.
-2. **Seed Queries (22 queries):** This is an automated baseline index. When Wren compiles relationships and cubes (like our `net_revenue` measure), it automatically synthesizes sample questions and SQL patterns. This jumpstarts the memory, giving the agent a foundational understanding of how your tables join without you having to write a manual example for everything.
-3. **Knowledge Pairs (1 pair):** This is the manual query recall index. It represents the custom, explicitly approved Natural-Language-to-SQL example we placed in the `knowledge/sql/` directory.
+When you run the index command, WrenAI breaks your project into distinct vectors:
+1. **Schema Items:** This is the structural index. Wren parses the MDL files and embeds Models, Views, Cubes, and metadata.
+2. **Seed Queries:** This is an automated baseline index synthesized from relationships and cubes.
+3. **Knowledge Pairs:** This is the manual query recall index from `knowledge/sql/`.
 
 **Learning Over Time:** Most text-to-SQL systems treat every question like the first question. WrenAI adds a memory layer so successful work can improve future work. The memory index has two jobs:
 1. **Schema context retrieval:** It retrieves only the relevant models (from the 64 items) and guidance for a specific question, which is critical when the total schema is too large for the LLM's prompt.
@@ -416,7 +421,7 @@ In this section, you will bring the AI orchestrator to life by connecting it to 
 Based on modern LLM architecture patterns, building an effective semantic reasoning system requires addressing **schema scale** and **schema drift**. To ensure robust querying, we employ a hybrid approach powered by WrenAI's native MCP integration:
 
 1. **Table Discovery (RAG)**: RAG is used to retrieve schema items relevant to the query. WrenAI uses its embedded **LanceDB** vector store as a *local, rebuildable index* (`.wren/memory/`) to identify the exact tables relevant to the user's intent. For this PoC, the semantic project is generated dynamically from the models, relationships, and knowledge definitions inside `manage_semantics.py`.
-2. **Schema & Syntax Validation (Native MCP Tools)**: The Strands agent utilizes WrenAI's native MCP endpoints to cross-reference the MDL and validate generated SQL using the `dry_plan` tool. This tests the logic and syntax against live metadata without executing a potentially expensive physical query, acting as a structural safeguard against hallucinations.
+2. **Schema & Syntax Validation (Native MCP Tools)**: The Strands agent utilizes WrenAI's native MCP endpoints to validate generated SQL using the `dry_plan` and `dry_run` tools. `dry_plan` inspects the generated physical SQL, while `dry_run` validates it against Trino, acting as a structural safeguard before invoking `run_sql`.
 
 ### 🚀 Setting up LLM
 
@@ -586,21 +591,23 @@ This allows you to explicitly teach the agent your organization's business rules
 **What happens WITH memory?**
 1. **Immediate Storage**: The agent bypasses the semantic schema completely and immediately invokes the memory tool. The rule is permanently saved into the `odctl` Valkey instance.
 2. **Contextual Retrieval**: The next time you ask *"How many high-value orders do we have yesterday?"*, the agent queries Mem0 first. It retrieves your exact definition.
-3. **Deterministic Execution**: The agent automatically applies the proper filter to the `orders` table (`total_amount > 500`), returning the correct, non-hallucinated metric:
+3. **Consistent Execution**: The agent applies the proper filter to the `orders` table (`total_amount > 500`), returning a consistent metric aligned with your rules:
 > `Agent ❯ There were 777 high-value orders (orders with a total amount greater than $500) yesterday.`
 
-This memory architecture ensures the AI adapts to your company's unique jargon and business definitions without requiring you to manually update the underlying semantic model for every localized colloquialism.
+This memory architecture allows the AI to adapt to your company's unique jargon and business definitions without requiring you to manually update the underlying semantic model for every localized colloquialism.
 
 ---
 
 ## Testing and Evaluation
 
-To measure the success of the Agentic Orchestrator, we evaluate it across three distinct dimensions. Because the system relies on an autonomous agent rather than a simple rule-based translation script, we must evaluate its decision-making (Tool Selection), its accuracy (Execution), and its safety (Negative Testing).
+To measure the success of the Agentic Orchestrator, we must evaluate its decision-making (Tool Selection) and its safety (Negative Testing). 
 
-### Testing Methodology
-1. **Cube Routing (Tool Selection):** When a user asks for governed metrics (e.g., "What was our net revenue?"), the agent must invoke the `query_cube` API. We evaluate this by verifying the agent selected the correct tool and passed the correct structured payload, avoiding raw SQL generation entirely.
-2. **Execution Accuracy (EX):** When governed metrics don't exist, the agent falls back to generating SQL against the raw semantic models. We evaluate this by executing both the agent's generated SQL and our Ground Truth SQL against Trino. A perfect match of the resulting data payloads counts as a success.
-3. **Graceful Failure (Negative Testing):** The most dangerous thing an agent can do is hallucinate. We feed the agent impossible queries (e.g., asking for a non-existent `return_reason` column) and use an LLM-as-a-judge to verify that the agent gracefully refused to answer rather than hallucinating fake data.
+### Testing Methodology (LLM-as-a-Judge Prototype)
+1. **Cube Routing (Tool Selection):** When a user asks for governed metrics, the agent should invoke `query_cube`.
+2. **Execution:** When governed metrics don't exist, the agent falls back to generating modeled SQL.
+3. **Graceful Failure (Negative Testing):** We feed the agent impossible queries (e.g., asking for a non-existent `return_reason` column) to verify that the agent gracefully refused to answer rather than inventing fake data.
+
+*Note: The current `evaluations/evaluate_semantics.py` is a prototype response-level LLM judge. It captures the agent's final text response and asks a separate LLM to grade it (PASS/FAIL). For a true production pipeline, this should be migrated to Strands Evals (using `ToolSelectionAccuracyEvaluator` and `TrajectoryEvaluator`) for deterministic SQL-result comparison and trajectory inspection.*
 
 ### Test Suite Coverage
 

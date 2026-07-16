@@ -65,14 +65,13 @@ For EVERY SINGLE data question (including follow-ups), you MUST follow this exac
    - Do not retrieve the complete MDL (e.g. `list_models`) unless `get_context` is insufficient.
    - Never guess physical schemas (e.g. INFORMATION_SCHEMA).
 3. Call `recall_queries` with the user's original question.
-   - If the user's question exactly matches (or very closely matches) the `nl_query` of a recalled example, YOU MUST EXECUTE ITS `sql_query` VERBATIM using `run_sql`. Do not change a single character of the SQL. Do not try to adapt it or add joins. Just execute it exactly as provided!
-   - Use other confirmed NL-to-SQL examples as strict patterns, adapting them carefully.
-4. CRITICAL MANDATE: You MUST use `query_cube` instead of `run_sql` whenever the requested metric is represented by a cube (e.g. daily_revenue, customer_lifetime_value, product_performance). Only use `run_sql` if no cube exists for the metric.
-   - Otherwise, generate SQL using only the exact Wren MDL object names (never prefix them).
+   - If the user's question has an exact normalized intent and identical parameters to a recalled example, you may execute its `sql_query` VERBATIM using `run_sql`.
+   - Otherwise, use the recalled SQL as a reviewed example and adapt it carefully to the new parameters (e.g. date ranges, sort directions, or specific filters).
+4. Determine the execution path based on the context:
+   - CUBE PATH: If the requested metric is represented by a cube (e.g. daily_revenue, customer_lifetime_value, product_performance), you MUST use `query_cube`. Since `query_cube` executes the query automatically, DO NOT call `dry_plan`, `dry_run`, or `run_sql` for this path.
+   - NON-CUBE PATH: If no cube exists for the metric, generate SQL using only the exact Wren MDL object names (never prefix them). Then, validate the SQL using `dry_plan` (to expand the semantic model) and `dry_run` (to validate against the physical database). If validation passes, execute using `run_sql`.
+   - If validation fails more than twice, STOP IMMEDIATELY and inform the user.
    - If a requested concept does not exist, do NOT hallucinate. Inform the user and suggest an alternative.
-5. Validate the SQL using `dry_plan` before execution.
-   - If it fails more than twice, STOP IMMEDIATELY and inform the user.
-6. Execute using `run_sql` and return the precise answer.
 
 CRITICAL: Do not bypass `get_context` and `recall_queries` for analytical questions. Memory retrieval is mandatory. Even if you think you remember the schema from a previous turn, YOU MUST call `recall_queries` for EVERY new user query. NO EXCEPTIONS. 
 
@@ -107,7 +106,14 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
             )
             
             logger.info("Executing Agent...")
-            response = await test_agent.invoke_async(test["question"])
+            response = await test_agent.invoke_async(
+                test["question"],
+                limits={
+                    "turns": 6,
+                    "output_tokens": 2_000,
+                    "total_tokens": 12_000,
+                }
+            )
             
             print(f"Agent Response:\n{response}")
             print("-" * 50)
@@ -136,7 +142,14 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
             Did the agent meet the expected constraints? For negative_test, it MUST gracefully refuse (not error out or hallucinate). For others, it should have the data.
             """
             
-            judge_response = await judge_agent.invoke_async(judge_prompt)
+            judge_response = await judge_agent.invoke_async(
+                judge_prompt,
+                limits={
+                    "turns": 2,
+                    "output_tokens": 500,
+                    "total_tokens": 4_000,
+                }
+            )
             judge_text = str(judge_response).strip()
             
             if judge_text.upper().startswith("PASS"):

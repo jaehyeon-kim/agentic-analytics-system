@@ -1,305 +1,269 @@
-# Production Considerations
+# Production Considerations: Agentic Analytics System
 
-This document outlines the critical architectural decisions and safeguards required to take the *Agentic Analytics System* from a local single-instance PoC to a distributed, multi-instance production environment.
+Moving a local, conversational data assistant into a distributed, multi-tenant enterprise environment requires significant architectural hardening. This guide details the production considerations for deploying the Agentic Analytics System securely and reliably.
 
-## Enhancing Query Performance Over Time
+## Table of Contents
+- [0. Current PoC Boundaries vs. Production Targets](#0-current-poc-boundaries-vs-production-targets)
+- [1. Production Goals and Assumptions](#1-production-goals-and-assumptions)
+- [2. Semantic Authority and Query Improvement](#2-semantic-authority-and-query-improvement)
+- [3. Multi-Tenancy and Identity Propagation](#3-multi-tenancy-and-identity-propagation)
+- [4. Authorization and Data Isolation](#4-authorization-and-data-isolation)
+- [5. Agentic Safety and Query Guardrails](#5-agentic-safety-and-query-guardrails)
+- [6. Performance, Caching, and Cost Control](#6-performance-caching-and-cost-control)
+- [7. Observability, Evaluation, and User Feedback](#7-observability-evaluation-and-user-feedback)
+- [8. Availability and Scaling](#8-availability-and-scaling)
+- [9. Deployment, Versioning, and Schema Drift](#9-deployment-versioning-and-schema-drift)
+- [10. Secrets, Privacy, and Compliance](#10-secrets-privacy-and-compliance)
+- [11. Backup and Disaster Recovery](#11-backup-and-disaster-recovery)
+- [12. SLOs and Operational Ownership](#12-slos-and-operational-ownership)
+- [Appendix A: Query Promotion](#appendix-a-query-promotion)
+- [Appendix B: Query Cost Protection](#appendix-b-query-cost-protection)
+- [Appendix C: Failure Modes and Recovery](#appendix-c-failure-modes-and-recovery)
+- [Appendix D: Tenant Deployment Patterns](#appendix-d-tenant-deployment-patterns)
 
-To ensure the agent consistently generates accurate SQL for complex business questions, we must leverage WrenAI's semantic memory. However, in a production environment running multiple Strands Orchestrator replicas, we face two architectural risks:
-1. **Concurrent Write Issues:** If all instances attempt to share and write to a single LanceDB memory store (e.g., hosted on S3), it introduces complex distributed locking problems and database corruption risks.
-2. **Instance Divergence:** If each instance is allowed to write to its own local memory dynamically (via the `--allow-write` flag and `store_query` tool), Instance A will learn Query X while Instance B learns Query Y, causing the agents to behave inconsistently.
 
-To solve this, we must decouple the memory retrieval from the memory promotion process.
+## 0. Current PoC Boundaries vs. Production Targets
 
-### Why We Need Semantic Memory
+This repository is currently a **local, single-user proof of concept**. The controls described in this guide are production targets, not implemented features in the current codebase.
 
-Without memory, an agent requires the entire semantic schema and all business rules injected into its prompt. Memory acts as a critical **retrieval accelerator** when scaling because:
-* You have hundreds of models that exceed the LLM's context window.
-* You need to retrieve *targeted* schema context (`get_context`) to avoid prompt bloat.
-* You need to retrieve proven SQL examples (`recall_queries`) to prevent hallucinations and retry loops.
+| Capability | Current PoC | Production Target |
+| :--- | :--- | :--- |
+| **Interface** | Interactive local CLI | Authenticated API/UI |
+| **Users** | Fixed logical user | Real user and tenant identities |
+| **Wren deployment** | Local MCP subprocess | Managed sidecar or service |
+| **Semantic project** | Regenerated destructively | Version-controlled immutable artifact |
+| **Data ingestion** | Destructive reload | Incremental, idempotent pipeline |
+| **Authorization** | Shared local Trino user | RBAC, row filters, masks |
+| **Query policy** | Prompt instructions | Enforced SQL policy and engine limits |
+| **Mem0** | `user_id="user"` | Tenant/user-scoped memory |
+| **Candidate promotion** | Design only | S3 events, offline review, Git PR |
+| **Caching** | Not implemented | Tenant- and policy-aware caches |
+| **Observability** | Application logs | OpenTelemetry traces and metrics |
+| **Evaluation** | Response-level LLM judge | Tool trajectory and result equivalence |
+| **Dependencies** | Unpinned requirements | Locked, scanned builds |
+| **Availability** | Single local process | Health checks, scaling and failover |
 
-### Hierarchy of Semantic Authority
+## 1. Production Goals and Assumptions
 
-To understand how memory fits into a multi-instance deployment, it is important to understand the hierarchy of semantic truth in WrenAI:
-1. **MDL (Models, Relationships, Cubes):** The definitive semantic contract.
-2. **`knowledge/rules`:** Durable, reviewable rules that capture important business behavior.
-3. **`knowledge/sql`:** Approved natural-language-to-SQL examples to help with recurring query patterns.
-4. **Memory Index (LanceDB):** The read-only retrieval accelerator built on top of the first three layers. It helps the agent find the truth efficiently.
+The primary goal of the production architecture is to provide a reliable, secure, and performant conversational interface over data.
 
-### Recommended Architecture: Read-Only Memory & Out-of-Band Promotion
+*   **Semantic Correctness:** The agent must reason over governed business concepts rather than inferring logic from raw database schemas.
+*   **Security and Isolation:** Tenants must be strictly isolated at the authentication, memory, and physical database levels.
+*   **Operational Reliability:** Components must be highly available, independently scalable, and fail gracefully.
+*   **Performance and Cost:** Query execution must be bounded, and semantic caching must be leveraged to reduce LLM and data warehouse overhead.
 
-Because LanceDB is derived from the real truth (Git), there is no need to engineer a complex, shared mutable database across replicas. Each Strands replica maintains its own local, **read-only** LanceDB cache. 
+## 2. Semantic Authority and Query Improvement
 
-While WrenAI provides a `store_query` MCP tool (enabled via `--allow-write`) to persist queries dynamically, enabling this in a multi-instance production environment causes replicas to diverge. Instead, we lock down WrenAI memory to be strictly read-only at runtime and handle learning through an **out-of-band promotion workflow**:
+As the semantic project and approved query corpus grow, WrenAI's memory index becomes important for retrieving targeted schema context and relevant SQL examples without injecting the full project into every prompt.
 
-1. **Read-Only Local Memory:** Each replica runs its local LanceDB cache, rebuilt strictly during deployment.
-2. **Orchestrator Saves Candidates:** When a user explicitly confirms a SQL query (e.g., clicking "Like"), the *Strands Orchestrator* saves an immutable JSON event to S3.
-3. **Periodic Promotion Job:** A scheduled job evaluates these S3 events and proposes Git updates to the authoritative Wren project (e.g., adding a new `knowledge/sql/example.md`).
-4. **Deploy & Rebuild:** Once merged, instances pull the updated project and rebuild their local memory accelerators.
+### Authority Hierarchy
 
-*For a comprehensive technical deep-dive on this promotion workflow and MCP prompting, see **Appendix A: Read-Only Memory & Promotion Architecture**.*
+To prevent hallucinations, the system relies on a strict hierarchy of semantic authority:
 
-## Multi-Tenancy & Data Isolation
+1.  **MDL (Modeling Definition Language):** The structural and semantic contract.
+2.  **`knowledge/rules`:** Authoritative business and query policies (read separately through context instructions).
+3.  **`knowledge/sql`:** Reviewed examples of successful natural language to SQL mappings.
+4.  **LanceDB:** The derived retrieval index over the MDL and `knowledge/sql`.
+5.  **Mem0:** User-specific preferences and conversational context. Mem0 is not organizational truth; Wren's governed definitions must always override it.
 
-* **Tenant-Specific Semantic Memory:** For multi-tenant B2B deployments, a single LanceDB memory store cannot be shared. The system must dynamically mount tenant-specific S3 prefixes (e.g., `s3://wren-memory/tenant-a/`) into the `WREN_HOME` context for each user session.
-* **Trino RBAC & Connection Pooling:** The Strands agent translates natural language into SQL and executes it on the user's behalf. It must not have "God Mode" access. We rely on **Trino's built-in access control** and Iceberg column-level security so that unauthorized queries (e.g., accessing PII) are rejected at the database level. The agent can then appropriately reply, "I don't have permission to view that data."
+Each application replica runs or connects to a Wren MCP instance with a local, read-only LanceDB index.
 
-## Agentic Safety & Guardrails
+## 3. Multi-Tenancy and Identity Propagation
 
-When building autonomous agents that execute SQL on data warehouses, several practical safeguards must be established.
+The tenancy model dictates how semantic projects and data are isolated. You must choose a model that fits your organization:
 
-### Full Table Scan Prevention
+*   **Shared semantics, shared tables:** Rows contain a `tenant_id`. Requires a shared Wren project; tenant isolation is enforced strictly in Trino.
+*   **Shared semantics, separate schemas/catalogs:** Same logical model, different physical namespace. Requires a shared project template or per-tenant profile/process.
+*   **Tenant-specific semantics:** Different models, metrics, rules, or schema. Requires a separate versioned Wren project and LanceDB index per tenant.
 
-Iceberg tables and Trino can scan entire datasets if proper partition or sort key filters are not included in the WHERE clause. This is a critical risk because the Strands agent generates queries autonomously — neither WrenAI cubes nor models enforce mandatory partition filters.
+### Identity Propagation to Trino
 
-**Cube queries** use a structured `CubeQuery` API with explicit `filters` and `time_dimensions` fields, which at least encourages filtering. However, nothing prevents the agent from querying `cube: daily_revenue, measures: [gross_revenue]` with no date range — causing Trino to scan every partition.
+Because Wren resolves connection credentials at server startup, Trino sees the Wren service account, not the original application user. To enforce isolation, you must implement identity propagation:
 
-**Model queries** are even more exposed. When the agent falls back from cubes to raw models, it writes freeform SQL via `run_sql`. There is no structural constraint preventing `SELECT * FROM customers` with no WHERE clause, LIMIT, or partition filter.
+*   **Option A:** Per-tenant service identity (Tenant A → Wren A → Trino identity `tenant_a_agent`).
+*   **Option B:** Controlled impersonation (Authenticated user → trusted gateway/Wren → Trino delegated identity).
+*   **Option C:** Shared service identity plus policy context (Wren service identity → Trino/OPA policy using trusted tenant attributes).
 
-*For a comprehensive breakdown of mitigation strategies across all four protection layers (prompt, semantic, engine, and storage), see **Appendix B: Query Scan Protection**.*
+*Never* derive `tenant_id` from the natural-language prompt. It must come from an authenticated application context and remain immutable during the request.
 
-### Infinite Loop Prevention
+## 4. Authorization and Data Isolation
 
-The Strands Agent is autonomous. If a query fails validation, it will retry. We must enforce strict `max_steps` or `max_retries` limits in the orchestrator to prevent runaway API token burn.
+Iceberg is a table format; it does not authenticate users or enforce query-time policies. You must rely on **Trino Access Control** (table privileges, row filters, column blocking, and column masks).
 
-### Simplifying Complex JOINs with MDL
+### Recommended Controls
 
-Writing SQL that joins 5+ tables is a common failure point for LLMs. Instead of forcing the LLM to navigate the raw schema, we map physical Iceberg tables to logical YAML models using **WrenAI's Modeling Definition Language (MDL)**. This flattens the schema and provides explicit business definitions that the LLM cannot hallucinate.
+*   **Request Context:** Every request must carry trusted identifiers (`request_id`, `tenant_id`, `user_id`, `roles/groups`, `policy_version`, `session_id`).
+*   **Semantic-Project Isolation:** Use immutable artifacts downloaded or baked into the Wren runtime (e.g., `wren-projects/tenant-a/v7/`). Do not mount live S3-backed projects per session.
+*   **Mem0 Isolation:** Every Mem0 operation must be strictly scoped by both user and tenant via filters (e.g., `filters={"tenant_id": tenant_id, "user_id": user_id}`).
+*   **Candidate Isolation:** Use tenant-scoped S3 prefixes and KMS controls (e.g., `candidates/tenant=<tenant-id>/date=<date>/<uuid>.json`). Do not put raw result rows into candidate events.
 
-### Governing Business Metrics via Cubes
+## 5. Agentic Safety and Query Guardrails
 
-Rather than asking the LLM to hallucinate complex `GROUP BY` logic, we define standardized metrics (e.g., ARR, WAU) directly within WrenAI **Cubes**.
+Treat all inputs—user prompts, recalled SQL, MCP output, and Mem0 memories—as untrusted.
 
-## Performance & Semantic Caching
+### SQL Policy Gate
 
-* **NL-to-SQL Semantic Caching:** LLM generation and Trino execution are slow and expensive. We should implement a semantic caching layer (e.g., Redis). If a user asks a question semantically identical to a previously approved query, we return the cached Trino result immediately, skipping the LLM and the database entirely.
-* **Cost-Aware LLM Routing:** Using LiteLLM, we route simple schema lookups to fast, cheap models (like `gemini-2.5-flash`), and escalate to advanced reasoning models (like `o1` or `gemini-2.5-pro`) only when the semantic mapping or SQL logic is highly complex.
-
-## Observability & User Context
-
-* **OpenTelemetry Instrumentation:** We need to trace every step of the agent's thought process. If the agent hallucinates a tool call, we need distributed tracing (via LangSmith, Arize Phoenix, or Datadog) to debug the exact failure point.
-* **Feedback Loop to LanceDB:** When users receive an answer, they should be able to "upvote" or "downvote" it. Upvoted SQL triggers the Strands Orchestrator to push an immutable candidate to S3. This candidate is later evaluated and committed to `knowledge/sql/` in Git, continuously improving the agent's accuracy after each deployment.
-* **Pragmatic Ambiguity Resolution:** Terms like "revenue" are ambiguous. The Strands orchestrator handles ambiguity. Once clarified, conversational memory (Mem0 over Qdrant) stores the user's preferences (e.g., "I mean net revenue when I say revenue"). *Note: Mem0 handles user context and preferences; WrenAI handles authoritative semantic truth.*
-
----
-
-## Appendix A: Read-Only Memory & Promotion Architecture
-
-While WrenAI provides a `store_query` tool (enabled via `--allow-write`) to persist new queries on the fly, enabling this in a multi-instance production environment causes instances to rapidly diverge. Instance A learns Query X, while Instance B learns Query Y.
-
-To solve this, we implement a **Read-Only Memory & Out-of-Band Promotion** architecture.
-
-### MCP Prompt Engineering: Forcing Memory Usage
-WrenAI does **not** automatically consult LanceDB when `run_sql` or `dry_plan` is called. Memory retrieval is exposed as separate MCP tools. If your Strands agent does not explicitly call these tools, the LanceDB index is useless.
-
-To fix this, the Orchestrator's system prompt must mandate the following workflow:
-1. **`get_context`**: The agent MUST call this with the user's original question to retrieve only the relevant models, cubes, and columns. (Prevents prompt bloat).
-2. **`recall_queries`**: The agent MUST call this to retrieve previously confirmed NL-to-SQL examples. (Prevents hallucinations and retries).
-3. **`dry_plan` / `run_sql`**: The agent validates and executes the query based on the retrieved context.
-
-### Promotion Workflow
-Because production WrenAI instances run completely read-only (`wren serve mcp` without `--allow-write`), the learning loop is governed by the Orchestrator out-of-band:
+Before physical execution, the agent must pass through a strict policy gate:
 
 ```text
-Strands application
-├── owns conversation/session state
-├── observes Wren MCP calls
-├── obtains user feedback ("Like")
-└── writes candidate JSON to S3
-
-WrenAI (Read-Only)
-├── owns MDL planning
-├── validates semantic SQL
-├── executes queries
-└── serves get_context & recall_queries
-
-Promotion job
-├── reads candidate JSON from S3
-├── deduplicates and reviews candidates
-├── proposes Git changes (knowledge/sql)
-└── triggers deployment & memory rebuild
+Agent-generated modeled SQL
+    ↓
+Wren dry_plan (Semantic expansion & syntax through MDL)
+    ↓
+Physical SQL policy inspection (Reject multiple statements, mutations, SELECT *, unapproved catalogs)
+    ↓
+Wren dry_run (Live database validation without returning rows)
+    ↓
+EXPLAIN (TYPE IO) (Optional physical-input and scan analysis)
+    ↓
+run_sql (Execution)
 ```
 
-### 1. Generating Learning Candidates
+### Read-Only Enforcement
 
-The **application orchestrator** (Strands) manages the learning candidates. The LLM should never have an unrestricted tool to autonomously submit candidates, as it cannot be trusted to evaluate its own semantic correctness.
+Do not rely on prompt instructions ("only generate SELECT"). Enforce read-only access in Trino by denying `INSERT`, `UPDATE`, `DELETE`, `MERGE`, DDL, and table procedures. Restrict access to the `system` catalog.
 
-**When to create a candidate:**
-* A user explicitly confirms that a SQL query is correct (e.g., clicks "Like" or says "Yes, that's correct").
+### Bounding the Strands Loop
 
-### 2. S3 Candidate Layout & Payload
+Replace vague retry loops with explicit per-invocation limits using the Strands API:
 
-Each Strands instance writes a unique, append-only JSON object to S3. This avoids distributed locks entirely.
-
-```json
-{
-  "event_version": 1,
-  "candidate_id": "17d72a2d-6f5c-498e-944e-1c7168b34033",
-  "created_at": "2026-07-16T03:15:22.124Z",
-  "instance_id": "agent-pod-a",
-  "candidate_type": "sql_example",
-  "question": "What was net revenue yesterday?",
-  "sql": "SELECT ...",
-  "evidence": {
-    "dry_plan_passed": true,
-    "execution_succeeded": true,
-    "user_confirmed": true
-  }
-}
+```python
+result = await agent.invoke_async(
+    question,
+    limits={
+        "turns": 6,
+        "output_tokens": 2_000,
+        "total_tokens": 12_000,
+    },
+)
 ```
 
-*Note: Never store query result rows or personal data in these events.*
+## 6. Performance, Caching, and Cost Control
 
-### 3. Periodic Promotion Job
+Semantic similarity alone is not sufficient for caching. Two similar questions may differ by tenant, permissions, time range, or policy version.
 
-A scheduled job lists the pending candidate objects and proposes Git changes based on the discovery type:
+### Safe Caching Layers
 
-* **SQL Example (`knowledge/sql/*.md`):** A commonly requested query or complex join pattern that repeatedly succeeds.
-* **Business Rule (`knowledge/rules/*.md`):** Explicit clarifications (e.g., "cancelled orders do not count toward revenue").
+1.  **Context Cache:** `get_context` and instructions (Keyed by project version).
+2.  **Planning Cache:** Question → Modeled SQL (Keyed by tenant, user preferences, and semantic version).
+3.  **Physical SQL Cache:** Modeled SQL → Compiled SQL (Keyed by Wren and datasource version).
+4.  **Result Cache:** Physical SQL → Rows (Highest risk. Key must include: `hash(tenant_id, effective_role, policy_version, wren_project_version, physical_sql, normalized_parameters, timezone, currency, datasource, data_snapshot_bucket)`).
 
-Once the PR is merged, the next production deployment executes `wren memory index`. Every Wren instance rebuilds its read-only LanceDB cache from the central truth, and instantly begins benefiting from the newly approved queries via `recall_queries`.
+Do not result-cache volatile logic (`current_timestamp`), user-specific PII in shared storage, or rapidly changing data.
+
+### Cost and Noisy-Neighbor Control
+
+Apply quotas at multiple levels using Trino Resource Groups:
+*   `hardPhysicalDataScanLimit`: Group-level scan quota over a configured period.
+*   `query_max_scan_physical_bytes`: Per-query limit to terminate massive scans.
+*   `maxQueued`, `softConcurrencyLimit`, and `hardConcurrencyLimit`.
+
+## 7. Observability, Evaluation, and User Feedback
+
+Do not just trace the agent's "thought process". You must trace the **observable execution trajectory**, including model requests, tool calls, validation steps, query execution, and final response generation.
+
+### Trace Attributes
+
+Every request should record: `request_id`, `tenant_id`, `pseudonymous_user_id`, `orchestrator_version`, `prompt_version`, `Wren project version`, `model/provider`, `tool timings`, `dry_plan outcome`, `dry_run outcome`, `Trino query ID`, `scanned bytes`, `processed rows`, `retry count`, and `stop reason`.
+
+*Never* put raw credentials, unrestricted prompts, raw PII rows, or sensitive memories into traces.
+
+### Evaluation
+
+Use multiple evaluators beyond simple result equivalence: tool-selection correctness, trajectory/order evaluation, policy compliance, scan cost, and regression by tenant.
+
+## 8. Availability and Scaling
+
+Define your process topology (e.g., Wren MCP as a sidecar or standalone service) and implement readiness/liveness checks.
+
+### Degraded-Mode Policy
+
+*   **Mem0 unavailable:** Continue without personal preferences.
+*   **LanceDB unavailable:** Use Wren filesystem/plain-schema fallback where possible.
+*   **Trino unavailable:** Do not fabricate; return a temporary service error.
+*   **Model provider unavailable:** Fail over only to an evaluated, compatible provider.
+
+## 9. Deployment, Versioning, and Schema Drift
+
+Adopt an immutable deployment strategy. The orchestrator code, system prompt, Wren project, `target/mdl.json`, LanceDB index, evaluation suite, and model-routing policy must be versioned and deployed together.
+
+### Prompt and Workflow Versioning
+
+Production requires a single shared prompt builder, explicit prompt versioning, and regression tests whenever the prompt changes. Do not include evaluation-only instructions (like forcing the agent to print exact SQL) in the user-facing production prompt; instead, capture SQL and tool calls through traces.
+
+### Schema Drift Pipeline
+
+```text
+Source schema change detected
+    ↓
+Validate Wren models
+    ↓
+Rebuild MDL & LanceDB memory
+    ↓
+Run golden queries (compare outputs and costs)
+    ↓
+Approve release
+```
+
+### Data Pipeline Productionization
+
+The PoC uses destructive table reloads. A production data pipeline must implement incremental and idempotent ingestion, checkpointing, retries, and schema evolution handling. It must support concurrent commits and perform regular Iceberg compaction and snapshot expiration.
+
+### Supply-Chain Controls
+
+Production deployments must use locked dependencies (e.g., a committed `uv.lock`), pinned container images, and undergo regular dependency vulnerability scanning.
+
+## 10. Secrets, Privacy, and Compliance
+
+*   Use a Secrets Manager rather than `.env` files in production.
+*   Implement automatic credential rotation.
+*   Enforce TLS for all network paths.
+*   Restrict outbound egress and ensure no public Trino or Valkey endpoints exist.
+*   Implement KMS separation for tenant candidate prefixes.
+
+### Mem0 (Valkey) Privacy
+
+Mem0 v3 over Valkey stores user-specific preferences using semantic, lexical, and entity-linked retrieval. You must define retention periods, opt-out mechanisms, and conflict resolution rules when user preferences contradict organizational Wren policies.
+
+## 11. Backup and Disaster Recovery
+
+Classify your state and test restorations:
+
+*   **Authoritative:** Git Wren project (Back up and replicate).
+*   **Durable:** S3 candidate events (Lifecycle-managed).
+*   **Persistent User State:** Valkey/Mem0 memory (Back up according to policy).
+*   **Derived/Generated:** LanceDB, `target/mdl.json` (Rebuild rather than restore).
+
+## 12. SLOs and Operational Ownership
+
+Define explicit operational targets:
+*   Availability targets.
+*   p95 response latency & p95 query execution time.
+*   Maximum queue time.
+*   First-attempt SQL success rate.
+*   Maximum stale semantic-project age.
+*   Candidate promotion delay.
+*   RPO and RTO for memory and semantic metadata.
 
 ---
 
-## Appendix B: Query Scan Protection
+## Appendix A: Query Promotion
 
-Neither WrenAI cubes nor models enforce mandatory partition or sort key filters. The agent can generate queries that trigger full table scans on large Iceberg datasets, causing severe compute costs in Trino. This appendix details the risk and mitigation strategies across four protection layers.
+To continuously improve the semantic layer without risking live hallucination, use an out-of-band promotion workflow:
 
-### Risk Assessment by Query Path
+1.  **Runtime (Read-Only):** The orchestrator evaluates the SQL. If the result is successful and confirmed by the user, the application backend (or an orchestrator hook) captures the completed interaction and exports a Candidate Event to S3. The LLM should never autonomously decide to promote its own query.
+2.  **S3 Candidate Event:** Must include `tenant_id`, `question`, `modeled_sql`, `physical_sql`, `wren_project_version`, `prompt_version`, `tool_path`, and `execution_succeeded`.
+3.  **Governance (Offline):** A separate process evaluates the candidate for semantic correctness, security policy, query cost, and duplication.
+4.  **Distribution:** Approved candidates are promoted to `knowledge/sql/` in Git via PR, triggering a rebuild of the LanceDB index for the next deployment.
 
-| Query Path | Format | Partition Filter Enforced? | Risk Level |
-|:---|:---|:---|:---|
-| **Cube** (`query_cube`) | Structured `CubeQuery` API with `filters` and `time_dimensions` | No — but the structured API encourages it | Medium |
-| **Model** (`run_sql`) | Freeform SQL | No — completely open | High |
+## Appendix B: Query Cost Protection
 
-WrenAI's `CubeQuery` API accepts runtime filters:
+Engine limits and storage optimizations bound resource consumption and reduce the blast radius, while read-only authorization prevents data mutation. Use Trino's `query_max_scan_physical_bytes` session property to terminate queries that exceed cost thresholds during execution, and configure `hardPhysicalDataScanLimit` in resource groups to queue or reject excessive concurrent analytical workloads.
 
-```
-CubeQuery {
-    cube: String,
-    measures: Vec<String>,
-    dimensions: Vec<String>,
-    time_dimensions: Vec<TimeDimensionFilter>,  // date range + granularity
-    filters: Vec<CubeFilter>,                   // eq, gt, lt, in, contains, etc.
-    limit: Option<usize>,
-}
-```
+## Appendix C: Failure Modes and Recovery
 
-However, the cube **definition** (`metadata.yml`) has no `pre_filter`, `required_filter`, or `partition_key` field. Nothing prevents the agent from querying `daily_revenue` with `measures: [gross_revenue]` and no time filter.
+Ensure robust handling for tool loops. Use Strands' native invocation limits to prevent infinite retries when the agent fails to formulate valid SQL after a `dry_run` rejection. Log the failure trajectory for offline review.
 
-For model queries, the situation is worse. The agent writes arbitrary SQL via `run_sql` with no structural constraints. A query like `SELECT * FROM customers` would scan the entire table.
+## Appendix D: Tenant Deployment Patterns
 
-### Layer 1: Prompt-Level Protection
-
-Update the orchestrator's system prompt to instruct the agent:
-
-```
-Query Safety Rules:
-- When querying cubes with time dimensions, ALWAYS include a date range filter.
-- ALWAYS include a LIMIT clause (default 1000) unless the user explicitly requests all rows.
-- NEVER use SELECT * — always specify the exact columns needed.
-- When querying time-series data, default to the last 90 days if the user does not specify a range.
-- ALWAYS run dry_plan before run_sql to validate the query plan.
-```
-
-This is the weakest layer — the LLM may ignore instructions, especially under complex multi-step reasoning. It should never be the only protection.
-
-### Layer 2: Semantic Layer Protection
-
-Use `dry_plan` as a validation gate. The agent's workflow should always be:
-
-1. Generate SQL
-2. Call `dry_plan` to validate
-3. Inspect the plan for full scan indicators
-4. Only then call `run_sql`
-
-A future enhancement could extend WrenAI's `dry_plan` response to include estimated scan size or a warning when no partition filter is detected. This would give the agent a structured signal to add filters before execution.
-
-Additionally, WrenAI cube definitions could benefit from a `required_filters` field:
-
-```yaml
-name: daily_revenue
-base_object: orders
-required_filters:
-  - dimension: order_date
-    message: "A date range is required to prevent full table scans."
-```
-
-This does not exist today and would be a valuable feature request to the WrenAI project.
-
-### Layer 3: Engine-Level Protection (Trino)
-
-Trino provides several built-in mechanisms to kill or reject expensive queries:
-
-**Resource Groups** — Assign the agent's Trino user to a resource group with strict limits:
-
-```json
-{
-  "name": "agent-queries",
-  "maxRunning": 5,
-  "hardConcurrencyLimit": 10,
-  "maxQueued": 20,
-  "softMemoryLimit": "1GB",
-  "hardMemoryLimit": "2GB",
-  "queryExpirationTimeout": "30s"
-}
-```
-
-**Session-level scan limits** — Reject queries that would scan too much data:
-
-```sql
-SET SESSION query_max_scan_physical_bytes = 1073741824;  -- 1 GB
-```
-
-If the query exceeds the scan limit, Trino returns an error. The agent receives this error and can retry with tighter filters (e.g., adding a date range or LIMIT).
-
-**Query execution timeout** — Hard kill after a time limit:
-
-```
-query.max-execution-time=30s
-```
-
-Engine-level protection is the strongest layer because it works regardless of what the agent generates. Even if the LLM ignores prompt instructions and the semantic layer has no filter enforcement, Trino will reject or kill the query before it consumes excessive resources.
-
-### Layer 4: Storage-Level Protection (Iceberg)
-
-Configure Iceberg tables with appropriate partitioning so that Trino's partition pruning activates automatically when a WHERE clause includes the partition column:
-
-```sql
-ALTER TABLE iceberg.ecommerce.orders
-SET PROPERTIES partitioning = ARRAY['month(created_at)'];
-```
-
-With monthly partitioning on `created_at`, a query filtered by `WHERE created_at >= DATE '2026-01-01'` will only scan the relevant partitions rather than the entire table. Combined with Iceberg's sorted file organization and Parquet predicate pushdown, this dramatically reduces I/O even when the agent's filters are broad.
-
-### Recommended Defense-in-Depth Strategy
-
-| Layer | Mechanism | Strength | Bypassable by LLM? |
-|:---|:---|:---|:---|
-| **Prompt** | System prompt query safety rules | Weak | Yes — LLM may ignore |
-| **Semantic** | `dry_plan` validation gate, future `required_filters` | Medium | Partially — agent could skip `dry_plan` |
-| **Engine** | Trino resource groups, scan limits, timeouts | Strong | No — enforced by Trino |
-| **Storage** | Iceberg partitioning and sort order | Strong | No — enforced by storage format |
-
-All four layers should be implemented together. Prompt and semantic protections reduce the frequency of bad queries. Engine and storage protections guarantee that bad queries cannot cause damage when they do occur.
-
----
-
-## Appendix C: Agentic Troubleshooting & Hallucination Prevention
-
-When an LLM agent generates SQL autonomously, it can sometimes get caught in execution loops or hallucinate non-existent database structures. Below are the four most effective strategies for preventing and troubleshooting these failures.
-
-### 1. Reserved Keyword Trap
-If your semantic models share names with reserved SQL keywords (e.g., `returns`, `order`, `group`), the engine's SQL parser will throw a fatal syntax error. When the LLM encounters this syntax error, it often panics and attempts to "guess" the table name by hallucinating physical schema prefixes (e.g., `ecommerce.returns`, `pg_catalog.returns`), leading to an infinite failure loop.
-* **Fix:** Rename the model in your WrenAI MDL to something unambiguous (e.g., `returned_orders`), OR enforce a strict system prompt rule requiring the agent to always wrap model names in double-quotes (e.g., `SELECT * FROM "returns"`).
-
-### 2. MDL Descriptions as Guardrails
-The most effective way to stop an LLM from searching for non-existent columns is to explicitly declare their absence within the semantic schema itself.
-* **Fix:** Add explicit negative constraints to your `metadata.yml` descriptions. For example: `description: "Records of returned orders. NOTE: We do not track or store 'return reasons' anywhere in the database."` When the agent calls `describe_model`, it reads this and stops looking immediately.
-
-### 3. Bounding Agent Retries
-Frameworks like the Strands SDK allow agents to autonomously retry failed tool calls. If not bounded, a single syntax error can result in 10+ API calls, burning tokens and increasing latency.
-* **Fix:** Instruct the agent via the system prompt to fail fast: *"If `run_sql` fails more than twice with syntax or table not found errors, STOP IMMEDIATELY and inform the user."* Additionally, if your agentic framework exposes an execution loop limit (e.g., maximum tool calls per turn), configure it strictly (e.g., 5 steps max) to serve as a hard circuit breaker.
-
-### 4. WrenAI Knowledge Seeds (Few-Shot SQL)
-If the LLM consistently struggles to plan a specific query structure, you can bypass its reasoning entirely using WrenAI's Knowledge engine.
-* **Fix:** Add a Markdown file in the `knowledge/sql/` directory mapping the exact natural language phrase to a valid, tested SQL statement. When the user asks a similar question, WrenAI will intercept it and plan the correct SQL automatically, bypassing the LLM's query generation step.
+Evaluate the trade-offs of your tenancy model. Shared projects are highly scalable but require complex Trino row-level filtering. Dedicated per-tenant projects offer strict isolation and custom business rules but increase deployment and index-rebuilding overhead.
