@@ -7,6 +7,9 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = Path(os.environ.get("WREN_HOME", BASE_DIR / ".wren_project"))
 
+# Ensure all subprocesses inherit the correct WREN_HOME so users don't have to export it
+os.environ["WREN_HOME"] = str(PROJECT_DIR)
+
 
 logging.basicConfig(level=logging.INFO, format='%(levelname)s: %(message)s')
 logger = logging.getLogger(__name__)
@@ -94,6 +97,7 @@ CUBES = {
         ],
         "measures": [
             {"name": "gross_revenue", "expression": "SUM(total_amount)", "type": "DOUBLE"},
+            {"name": "net_revenue", "expression": "SUM(total_amount) - COALESCE(SUM(orders_to_returned_orders.refund_amount), 0)", "type": "DOUBLE"},
             {"name": "total_orders", "expression": "COUNT(order_id)", "type": "BIGINT"}
         ]
     },
@@ -322,6 +326,27 @@ def list_models():
             for f in cube_folders:
                 logger.info(f"  - {f}")
 
+def seed_knowledge():
+    """Seeds the Golden SQL knowledge for ambiguity resolution."""
+    logger.info("🌱 Seeding Golden SQL knowledge for ambiguity resolution...")
+    knowledge_dir = os.path.join(PROJECT_DIR, "knowledge", "sql")
+    os.makedirs(knowledge_dir, exist_ok=True)
+    refunds_file = os.path.join(knowledge_dir, "refunds_by_status.md")
+    
+    content = """---
+nl: Show me all refunded amount of orders by status.
+sql: |
+  SELECT return_status, SUM(refund_amount) AS total_refunded
+  FROM returned_orders
+  GROUP BY return_status
+datasource: trino
+source: user
+---
+"""
+    with open(refunds_file, "w") as f:
+        f.write(content)
+    logger.info(f"✅ Created {refunds_file}")
+
 def build_context():
     """Compiles the WrenAI semantic context into the mdl.json manifest."""
     logger.info("🧠 Validating Semantic Context...")
@@ -481,6 +506,9 @@ if __name__ == "__main__":
     # Watch
     subparsers.add_parser("watch", help="Start the dynamic memory indexing daemon")
     
+    # Refresh
+    subparsers.add_parser("refresh", help="Build context and index memory in one go")
+    
     # Query
     parser_query = subparsers.add_parser("query", help="Execute a query against the semantic engine")
     parser_query.add_argument("sql", help="SQL string to execute")
@@ -519,6 +547,10 @@ if __name__ == "__main__":
     elif args.command == "build":
         build_context()
     elif args.command == "index":
+        index_memory()
+    elif args.command == "refresh":
+        seed_knowledge()
+        build_context()
         index_memory()
     elif args.command == "watch":
         watch_memory()
