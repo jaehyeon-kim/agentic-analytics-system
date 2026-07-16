@@ -304,6 +304,12 @@ export WREN_HOME=$(pwd)/src/semantic_engine/.wren_project
 python src/semantic_engine/manage_semantics.py init
 ```
 
+You can verify the generated connection profile (which should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema) by running:
+
+```bash
+wren profile debug
+```
+
 </details>
 
 <details>
@@ -355,19 +361,15 @@ wren memory fetch \
 </details>
 
 <details>
-<summary>Verifying the Trino Profile and Queries</summary>
+<summary>Running the Test Suite</summary>
 
-Once the project is initialized and indexed, you can verify that WrenAI is correctly connected to the Lakehouse. Our management script natively generates a localized connection profile inside `.wren_project` to keep your environment clean.
+Once the project is initialized and indexed, you can run the extensive automated test suite to validate joins and cubes against your Lakehouse:
 
 ```bash
-# Verify the active profile (Requires WREN_HOME to be exported as detailed above)
-wren profile debug
-
-# Run the extensive automated test suite to validate joins and cubes
 python src/semantic_engine/manage_semantics.py test
 ```
 
-The profile should point to `localhost:8080`, using the `iceberg` catalog and `ecommerce` schema, and the test suite should execute all queries successfully.
+The test suite should execute all queries successfully.
 
 </details>
 
@@ -453,9 +455,81 @@ Here are three examples demonstrating how the agent dynamically routes queries:
 > `User ❯ What is the revenue for orders that are delivered?`
 *Behavior:* The agent discovers the `daily_revenue` cube, maps "revenue" to `gross_revenue`, and queries it. The LLM does not write the `GROUP BY` or `SUM()` logic — WrenAI compiles the deterministic SQL defined in the cube.
 
+```sql
+SELECT SUM(total_amount)
+FROM iceberg.ecommerce.orders 
+WHERE status = 'delivered';
+```
+
 **2. Falling back to a Model (Raw Schema)**
+When a question doesn't fit neatly into a governed cube, the agent must generate a query using the raw schema models. This introduces the challenge of ambiguity in natural language.
+
+**Case 1: Misleading Prompt**
 > `User ❯ Show me all refunded amount of orders by status.`
-*Behavior:* The agent uses `list_models` and `describe_model` to identify the `returned_orders` model, determines how to aggregate refunds by status, and successfully executes the physical SQL on the raw schema.
+*Behavior:* Because the prompt is ambiguous, the agent joins `returned_orders` to `orders` and groups by `orders.status`. Since an order must be delivered to be returned, it incorrectly aggregates everything under `delivered`.
+
+```sql
+SELECT o.status, SUM(r.refund_amount) AS total_refunded
+FROM iceberg.ecommerce.returned_orders r
+JOIN iceberg.ecommerce.orders o ON r.order_id = o.order_id
+GROUP BY o.status;
+```
+
+**Case 2: Intended Prompt (Prompt Engineering)**
+> `User ❯ Show me all refunded amount of orders by return status.`
+*Behavior:* By explicitly specifying "return status", the agent correctly identifies that it should group by the `return_status` column inside the `returned_orders` model instead of joining to `orders`.
+
+```sql
+SELECT return_status, SUM(refund_amount) AS total_refunded
+FROM iceberg.ecommerce.returned_orders
+GROUP BY return_status;
+```
+
+**Case 3: Using `knowledge/sql` (Semantic Fix)**
+Instead of relying on users to write perfect prompts, we can teach the semantic engine how to interpret ambiguous phrases by providing domain-specific Golden SQL examples.
+
+We have a built-in `refresh` command that automatically seeds a `refunds_by_status.md` Golden SQL file into the `knowledge/sql` directory with the following content and then recompiles the engine:
+
+```yaml
+---
+nl: Show me all refunded amount of orders by status.
+sql: |
+  SELECT return_status, SUM(refund_amount) AS total_refunded
+  FROM returned_orders
+  GROUP BY return_status
+datasource: trino
+source: user
+---
+```
+
+Run the following command:
+
+```bash
+python src/semantic_engine/manage_semantics.py refresh
+```
+*Behavior:* This command writes the Golden SQL file, executes `wren build` (to compile the new knowledge into the manifest), and runs `wren memory index` (to generate the RAG embeddings). Now, when a user asks the ambiguous **Case 1** prompt, the agent seamlessly retrieves this knowledge and executes the exact same correct SQL as **Case 2** without requiring any prompt engineering!
+
+<details>
+<summary>💡 Deep Dive: Semantic Similarity & Alternative Solutions</summary>
+
+**1. Is a single `nl` prompt enough?**
+Yes! WrenAI uses LanceDB (a vector database) for Retrieval-Augmented Generation (RAG). When you run the `refresh` command, it converts the `nl` string into a vector embedding. If a user asks a differently worded question (e.g., *"What's the total refunded grouped by status?"*), the semantic engine uses vector similarity to match it to your Golden SQL prompt. You don't need to write every possible permutation!
+
+**2. Is there another way to fix this without writing SQL?**
+Absolutely. While `knowledge/sql` is a great quick fix, the best architectural solution is to create a **Cube**:
+```yaml
+name: refunds_cube
+source: returned_orders
+dimensions:
+  - return_status
+measures:
+  - name: total_refunded
+    expression: sum(refund_amount)
+```
+If you define this cube, the LLM will skip the raw schema entirely and route the query directly to the cube (exactly like **Case 1: Hitting a Cube**), ensuring 100% deterministic accuracy.
+
+*(Alternatively, simply renaming the ambiguous `status` column in the `orders` model to `order_status` would instantly stop the LLM from confusing it with `return_status`!)*
+</details>
 
 **3. Handling Missing Data Gracefully**
 > `User ❯ Show me all returned orders and their return reasons.`
