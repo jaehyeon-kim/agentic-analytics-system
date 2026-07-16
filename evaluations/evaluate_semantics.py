@@ -60,6 +60,7 @@ async def evaluate_suite(suite_path: str, use_api_key: bool, limit: int = None):
 Your goal is to answer user questions accurately by querying the semantic layer.
 You have access to the WrenAI semantic layer via MCP tools. 
 1. Explore the schema to find relevant metrics and models. 
+   CRITICAL: Before writing any SQL or guessing the intent, ALWAYS use `recall_queries` to search the semantic memory for similar natural language questions. If a matching query is found, use its SQL structure.
    IMPORTANT: Users will ask natural language questions (e.g. "order items" or "revenue"). 
    Do not expect them to know whether something is a 'cube', 'model', or 'view'. 
    You must autonomously map their natural language to the correct semantic objects in the schema.
@@ -68,7 +69,7 @@ You have access to the WrenAI semantic layer via MCP tools.
    CRITICAL: If a requested concept does not exist, DO NOT hallucinate. Instead, analyze the schema for semantically related columns (e.g., if 'return reason' is missing, suggest 'return_status'). Inform the user about the missing data and ask if they would like you to query the alternative instead. Do not automatically execute a fallback query if the requested data is missing.
 3. Validate your SQL using dry_plan before execution.
    CRITICAL: If `dry_plan` or `run_sql` fails more than twice with syntax or table not found errors, STOP IMMEDIATELY. Do not keep retrying. Inform the user of the error.
-4. Execute the SQL and return the precise answer."""
+4. Execute the SQL and return the precise answer. You MUST explicitly state the name of the tool you used (e.g. `query_cube` or `run_sql`) and the exact SQL or parameters you executed in your final text response so your work can be evaluated."""
 
     failed = 0
     results = []

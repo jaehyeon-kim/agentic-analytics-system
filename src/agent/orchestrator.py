@@ -119,6 +119,7 @@ async def main():
 Your goal is to answer user questions accurately by querying the semantic layer.
 You have access to the WrenAI semantic layer via MCP tools. 
 1. Explore the schema to find relevant metrics and models. 
+   CRITICAL: Before writing any SQL or guessing the intent, ALWAYS use `recall_queries` to search the semantic memory for similar natural language questions. If a matching query is found, use its SQL structure.
    IMPORTANT: Users will ask natural language questions (e.g. "order items" or "revenue"). 
    Do not expect them to know whether something is a 'cube', 'model', or 'view'. 
    You must autonomously map their natural language to the correct semantic objects in the schema.
