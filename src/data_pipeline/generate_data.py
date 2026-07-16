@@ -71,8 +71,11 @@ def run_simulation(args):
 
     router = create_ecommerce_router(args.dest_path)
 
+    from datetime import datetime
+    start_time = datetime.now() - timedelta(days=args.days)
+    
     app = (
-        SimulationContext(sim_id="ECommerce", factor=0.0, random_seed=args.random_seed)
+        SimulationContext(sim_id="ECommerce", factor=0.0, random_seed=args.random_seed, logical_start_time=start_time)
         .add_egress(ParquetStorageEgress(path_router=router, filesystem=filesystem))
         .with_batching(batch_size=args.batch_size, flush_interval=86400)
         .add_arrival("customer_signup", dist="exponential", rate=100.0 / 86400)
