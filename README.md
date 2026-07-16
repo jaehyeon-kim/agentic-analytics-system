@@ -12,23 +12,29 @@ This project extends the concepts demonstrated in the AWS Agentic Analytics Read
 
 The result is a reference implementation for semantic-layer-backed conversational analytics, with separate components for agent orchestration, semantic planning, long-term user memory and physical query execution.
 
-## Evaluating Semantic Layer AI Solutions
+## Evaluating Semantic Layer and Analytics Agent Solutions
 
-When building an autonomous data assistant, the biggest challenge is translating ambiguous natural language into deterministic, accurate SQL. There are several popular tools in the ecosystem attempting to solve this:
+Building a reliable data assistant requires more than generating valid SQL. It must apply consistent business definitions, approved relationships, governed metrics, and controlled access to the underlying data model.
 
-*   **[WrenAI](https://www.getwren.ai/)**: A robust semantic engine that combines an AI semantic reasoning interface with a deterministic Semantic Layer (MDL). It bridges the gap between RAG (for query recall) and strict data governance (Cubes, Models, and Relationships). 
-*   **[Vanna AI](https://vanna.ai/)**: Vanna provides a flexible SQL-agent framework with tool memory and user-aware permissions. WrenAI was selected because this project specifically required an explicit semantic project containing models, relationships, cubes, business rules and reviewed NL-to-SQL examples.
-*   **[Nao](https://getnao.io/)**: Nao is a broader analytics-agent and context-engineering platform, with strong context ingestion, testing and end-user deployment capabilities. WrenAI was selected because this project wanted a focused semantic compiler and execution layer that could be embedded behind a separate Strands orchestrator.
-*   **[MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow)**: MetricFlow was considered for governed metric definitions, but it was excluded because the target environment includes tables, views and materialized objects that are not necessarily managed as dbt models. The project required a semantic layer that could map directly onto the existing Trino, Iceberg and potentially ClickHouse environment.
+* **[WrenAI](https://www.getwren.ai/):** A semantic engine that uses MDL to define models, relationships, views, calculated fields, and cubes as a structured, executable semantic contract. It also supports a wide range of data sources, including Trino and ClickHouse.
+* **[Vanna AI](https://vanna.ai/):** A flexible SQL-agent framework built around tools, memory, permissions, and learned query examples. It does not provide the same formal semantic modeling layer, and popular data sources such as Trino and ClickHouse would require custom database integration. Moreover, ts official open-source GitHub repository was archived on March 29, 2026.
+* **[Nao](https://getnao.io/):** An integrated analytics-agent platform whose Context Builder stores business definitions, rules, metadata, and query examples primarily as Markdown-based context. This is flexible, but it relies more heavily on agent interpretation and is less suitable where strict enterprise control over semantic meaning is required.
+* **[MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow):** A formal semantic query engine for defining metrics, entities, dimensions, and relationships. It is closely aligned with dbt and OSI semantic models, while this project must also support objects that are not consistently represented in dbt.
 
-**Why WrenAI was selected for this project:**
-1. Explicit MDL models, relationships, views and cubes.
-2. Direct Trino and ClickHouse connectors.
-3. File-based, reviewable project context.
-4. Separate business rules and approved SQL examples.
-5. Native MCP tools.
-6. Local, rebuildable LanceDB retrieval.
-7. Deterministic semantic SQL expansion after the agent has selected the logical query.
+### Why WrenAI Was Selected
+
+1. Structured MDL models, relationships, views, calculated fields, and cubes.
+2. Stronger control over business definitions, relationships, and metrics.
+3. Deterministic SQL expansion from logical semantic queries.
+4. Support for a wide range of popular data sources, including Trino and ClickHouse.
+5. Direct modeling of existing tables, views, and materialized objects.
+6. File-based definitions that can be reviewed and versioned in Git.
+7. Separate business rules and reviewed natural-language-to-SQL examples.
+8. Native MCP tools for integration with Strands.
+9. A local, rebuildable LanceDB retrieval index.
+10. Clear separation between Strands orchestration and WrenAI semantic execution.
+
+WrenAI was selected because this project prioritises formal semantic governance and controlled SQL generation. Nao provides a broader and more integrated platform, but its flexible context model offers weaker enforcement of business meaning. Vanna lacks the required semantic modeling and native support for several relevant data sources, while MetricFlow is more closely tied to dbt-oriented metric management.
 
 ## Table of Contents
 
