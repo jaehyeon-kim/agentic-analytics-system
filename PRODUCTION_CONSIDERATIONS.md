@@ -2,20 +2,41 @@
 
 This document outlines the critical architectural decisions and safeguards required to take the *Agentic Analytics System* from a local single-instance PoC to a distributed, multi-instance production environment.
 
-## Multi-Instance Deployment & Semantic Memory
+## Enhancing Query Performance Over Time
 
-In a production environment running multiple Strands Orchestrator replicas, we must solve the concurrent memory storage problem for WrenAI. 
+To ensure the agent consistently generates accurate SQL for complex business questions, we must leverage WrenAI's semantic memory. However, in a production environment running multiple Strands Orchestrator replicas, we face two architectural risks:
+1. **Concurrent Write Issues:** If all instances attempt to share and write to a single LanceDB memory store (e.g., hosted on S3), it introduces complex distributed locking problems and database corruption risks.
+2. **Instance Divergence:** If each instance is allowed to write to its own local memory dynamically (via the `--allow-write` flag and `store_query` tool), Instance A will learn Query X while Instance B learns Query Y, causing the agents to behave inconsistently.
 
-### Concurrency Problem
-By default, WrenAI's LanceDB-backed `MemoryStore` uses local disk (`~/.wren/memory`). Even if pointed to an S3 URI, Wren's application-level mutations (like schema reindexing) are not atomic—they often read data, drop the existing table, and recreate it. Concurrent schema updates from multiple instances will cause catastrophic race conditions where one replica drops a table that another is trying to read.
+To solve this, we must decouple the memory retrieval from the memory promotion process.
 
-### Shared Reader, Single Writer Architecture
-To safely scale, we decouple reads from writes:
-* **Stateless Readers:** All Strands Orchestrator replicas act strictly as **readers**. They connect to a shared S3 URI to fetch context and query history.
-* **Logical Writer Service:** All semantic mutations (schema reindexing, appending new approved golden queries, or query upserts) must be routed to a single logical writer service via a message queue (e.g., SQS FIFO or Kafka).
-* **S3 Optimistic Locking & WrenAI Patch:** S3 conditional writes supply Lance's required atomic commit primitives, protecting individual commits. However, to bypass Wren's local file handling, a small Python patch is required.
+### Why We Need Semantic Memory
 
-*For a comprehensive technical deep-dive on S3 Optimistic Locking, Wren's application-level operations, and the required patching, see **Appendix A: Shared LanceDB Architecture Details** at the end of this document.*
+Without memory, an agent requires the entire semantic schema and all business rules injected into its prompt. Memory acts as a critical **retrieval accelerator** when scaling because:
+* You have hundreds of models that exceed the LLM's context window.
+* You need to retrieve *targeted* schema context (`get_context`) to avoid prompt bloat.
+* You need to retrieve proven SQL examples (`recall_queries`) to prevent hallucinations and retry loops.
+
+### Hierarchy of Semantic Authority
+
+To understand how memory fits into a multi-instance deployment, it is important to understand the hierarchy of semantic truth in WrenAI:
+1. **MDL (Models, Relationships, Cubes):** The definitive semantic contract.
+2. **`knowledge/rules`:** Durable, reviewable rules that capture important business behavior.
+3. **`knowledge/sql`:** Approved natural-language-to-SQL examples to help with recurring query patterns.
+4. **Memory Index (LanceDB):** The read-only retrieval accelerator built on top of the first three layers. It helps the agent find the truth efficiently.
+
+### Recommended Architecture: Read-Only Memory & Out-of-Band Promotion
+
+Because LanceDB is derived from the real truth (Git), there is no need to engineer a complex, shared mutable database across replicas. Each Strands replica maintains its own local, **read-only** LanceDB cache. 
+
+While WrenAI provides a `store_query` MCP tool (enabled via `--allow-write`) to persist queries dynamically, enabling this in a multi-instance production environment causes replicas to diverge. Instead, we lock down WrenAI memory to be strictly read-only at runtime and handle learning through an **out-of-band promotion workflow**:
+
+1. **Read-Only Local Memory:** Each replica runs its local LanceDB cache, rebuilt strictly during deployment.
+2. **Orchestrator Saves Candidates:** When a user explicitly confirms a SQL query (e.g., clicking "Like"), the *Strands Orchestrator* saves an immutable JSON event to S3.
+3. **Periodic Promotion Job:** A scheduled job evaluates these S3 events and proposes Git updates to the authoritative Wren project (e.g., adding a new `knowledge/sql/example.md`).
+4. **Deploy & Rebuild:** Once merged, instances pull the updated project and rebuild their local memory accelerators.
+
+*For a comprehensive technical deep-dive on this promotion workflow and MCP prompting, see **Appendix A: Read-Only Memory & Promotion Architecture**.*
 
 ## Multi-Tenancy & Data Isolation
 
@@ -56,146 +77,86 @@ Rather than asking the LLM to hallucinate complex `GROUP BY` logic, we define st
 ## Observability & User Context
 
 * **OpenTelemetry Instrumentation:** We need to trace every step of the agent's thought process. If the agent hallucinates a tool call, we need distributed tracing (via LangSmith, Arize Phoenix, or Datadog) to debug the exact failure point.
-* **Feedback Loop to LanceDB:** When users receive an answer, they should be able to "upvote" or "downvote" it. Upvoted SQL should be pushed into the SQS/Kafka "Single Logical Writer" queue to become a permanent Golden Seed Query in LanceDB, continuously improving the agent's accuracy over time.
+* **Feedback Loop to LanceDB:** When users receive an answer, they should be able to "upvote" or "downvote" it. Upvoted SQL triggers the Strands Orchestrator to push an immutable candidate to S3. This candidate is later evaluated and committed to `knowledge/sql/` in Git, continuously improving the agent's accuracy after each deployment.
 * **Pragmatic Ambiguity Resolution:** Terms like "revenue" are ambiguous. The Strands orchestrator handles ambiguity. Once clarified, conversational memory (Mem0 over Qdrant) stores the user's preferences (e.g., "I mean net revenue when I say revenue"). *Note: Mem0 handles user context and preferences; WrenAI handles authoritative semantic truth.*
 
 ---
 
-## Appendix A: Shared LanceDB Architecture Details
+## Appendix A: Read-Only Memory & Promotion Architecture
 
-S3 optimistic locking is helpful, but it should be a safety mechanism—not your primary multi-instance coordination strategy. Your current `orchestrator.py` starts a separate Wren MCP subprocess for each Strands instance and points it at a local `WREN_HOME`. Therefore, multiple orchestrator replicas would currently create independent local Wren/LanceDB instances.
+While WrenAI provides a `store_query` tool (enabled via `--allow-write`) to persist new queries on the fly, enabling this in a multi-instance production environment causes instances to rapidly diverge. Instance A learns Query X, while Instance B learns Query Y.
 
-### What S3 Changes
+To solve this, we implement a **Read-Only Memory & Out-of-Band Promotion** architecture.
 
-Instead of replicating LanceDB between instances:
-```text
-Replica A: local LanceDB
-Replica B: local LanceDB
-Replica C: local LanceDB
-```
+### MCP Prompt Engineering: Forcing Memory Usage
+WrenAI does **not** automatically consult LanceDB when `run_sql` or `dry_plan` is called. Memory retrieval is exposed as separate MCP tools. If your Strands agent does not explicitly call these tools, the LanceDB index is useless.
 
-Use one shared Lance dataset:
-```text
-Replica A ─┐
-Replica B ─┼── s3://wren-memory/project-a/
-Replica C ─┘
-```
+To fix this, the Orchestrator's system prompt must mandate the following workflow:
+1. **`get_context`**: The agent MUST call this with the user's original question to retrieve only the relevant models, cubes, and columns. (Prevents prompt bloat).
+2. **`recall_queries`**: The agent MUST call this to retrieve previously confirmed NL-to-SQL examples. (Prevents hallucinations and retries).
+3. **`dry_plan` / `run_sql`**: The agent validates and executes the query based on the retrieved context.
 
-Lance supports S3-backed datasets and accepts `s3://...` URIs with object-store configuration. S3 now supports the atomic primitives Lance needs:
-* `If-None-Match: *` — create only if the object does not already exist.
-* `If-Match: <ETag>` — update only if the object has not changed.
-
-Competing conditional writes result in one success while later conflicting writes fail with `412 Precondition Failed`. This matches Lance’s transaction protocol. Lance commits new manifest versions using atomic `put-if-not-exists`, and its transaction layer uses optimistic concurrency control, conflict detection and automatic rebasing where possible. 
-
-S3 also provides strong read-after-write and strongly consistent listings, so after a successful commit, S3 itself immediately exposes the new objects.
-
-### Important Wren Limitation
-
-Current Wren cannot simply be configured with `WREN_MEMORY_PATH=s3://bucket/wren-memory`. Its `MemoryStore` converts the path into a `pathlib.Path`, calls `mkdir()`, and then connects LanceDB to that local path. 
-
-You need a small Wren patch along these lines:
-```python
-if "://" in memory_path:
-    resolved = memory_path
-else:
-    resolved = Path(memory_path).expanduser()
-    resolved.mkdir(parents=True, exist_ok=True)
-
-self._db = lancedb.connect(
-    str(resolved),
-    storage_options=storage_options,
-)
-```
-Conceptually Wren must preserve `s3://` URIs instead of treating them as filesystem paths.
-
-### What Optimistic Locking Does Not Solve
-
-It protects **individual Lance commits**, but Wren has application-level operations composed of several commits.
-
-**`store_query`**
-This is a straightforward append: `table.add([record])`. Lance explicitly designs append transactions to coexist with other append transactions. Therefore, concurrent query-history appends are probably the safest Wren operation to distribute. However, Wren does not attach an idempotency key. A message retry can append the same NL→SQL record twice.
-
-**Schema reindex**
-Wren’s schema replacement does:
-1. `drop schema table`
-2. `create schema table`
-
-Two instances doing that concurrently can interfere even when every underlying Lance commit is individually valid.
-
-**Forget, overwrite and upsert**
-Wren’s delete implementation:
-1. reads the whole query table;
-2. removes rows in memory;
-3. drops the table;
-4. recreates it.
-
-The upsert workflow similarly reads existing data, identifies rows, deletes them and inserts replacements. S3 conditional writes cannot automatically turn that entire sequence into one transaction. Another writer may append between the read and table recreation, causing a lost update.
-
-### Recommended Architecture
+### Promotion Workflow
+Because production WrenAI instances run completely read-only (`wren serve mcp` without `--allow-write`), the learning loop is governed by the Orchestrator out-of-band:
 
 ```text
-                       ┌── Wren reader A
-Strands replicas ──────┼── Wren reader B
-                       └── Wren reader C
-                                │
-                                ▼
-                  Shared S3-backed LanceDB
-                                ▲
-                                │
-                  Single logical writer
-                         SQS FIFO / Kafka
+Strands application
+├── owns conversation/session state
+├── observes Wren MCP calls
+├── obtains user feedback ("Like")
+└── writes candidate JSON to S3
+
+WrenAI (Read-Only)
+├── owns MDL planning
+├── validates semantic SQL
+├── executes queries
+└── serves get_context & recall_queries
+
+Promotion job
+├── reads candidate JSON from S3
+├── deduplicates and reviews candidates
+├── proposes Git changes (knowledge/sql)
+└── triggers deployment & memory rebuild
 ```
 
-Use these rules:
+### 1. Generating Learning Candidates
 
-| Operation | Execution |
-| :--- | :--- |
-| Recall/fetch/search | Any replica |
-| Append approved query | Writer service |
-| Query upsert/delete | Writer service |
-| Schema reindex | Writer service |
-| Reset/rebuild | Writer service |
-| Compaction/index maintenance | Writer service |
+The **application orchestrator** (Strands) manages the learning candidates. The LLM should never have an unrestricted tool to autonomously submit candidates, as it cannot be trusted to evaluate its own semantic correctness.
 
-S3 optimistic concurrency then protects you from accidental competing commits and failed leader transitions, but normal application traffic remains serialized through one logical writer.
+**When to create a candidate:**
+* A user explicitly confirms that a SQL query is correct (e.g., clicks "Like" or says "Yes, that's correct").
 
-### Better Schema-Rebuild Pattern
+### 2. S3 Candidate Layout & Payload
 
-Do not replace the active schema index in place. Build a new immutable version:
-
-```text
-s3://wren-memory/project-a/releases/v41/
-s3://wren-memory/project-a/releases/v42/
-s3://wren-memory/project-a/current.json
-```
-
-Workflow:
-1. Writer builds `releases/v42` completely
-2. Writer validates `v42`
-3. Writer reads `current.json` and its ETag
-4. Writer updates `current.json` using `If-Match`
-5. Readers detect `v42` and reopen the dataset
-
-Here, S3 optimistic locking is particularly valuable. Two builders may produce candidate indexes, but only one can successfully move the `current.json` pointer from the expected previous version. You could use:
+Each Strands instance writes a unique, append-only JSON object to S3. This avoids distributed locks entirely.
 
 ```json
 {
-  "project_version": "v42",
-  "memory_uri": "s3://wren-memory/project-a/releases/v42/",
-  "mdl_hash": "..."
+  "event_version": 1,
+  "candidate_id": "17d72a2d-6f5c-498e-944e-1c7168b34033",
+  "created_at": "2026-07-16T03:15:22.124Z",
+  "instance_id": "agent-pod-a",
+  "candidate_type": "sql_example",
+  "question": "What was net revenue yesterday?",
+  "sql": "SELECT ...",
+  "evidence": {
+    "dry_plan_passed": true,
+    "execution_succeeded": true,
+    "user_confirmed": true
+  }
 }
 ```
 
-### Summary
+*Note: Never store query result rows or personal data in these events.*
 
-* multiple Strands/Wren readers
-* shared S3-backed LanceDB
-* one logical mutation writer
-* S3 If-Match/If-None-Match as concurrency protection
-* versioned schema-index releases
-* idempotent query events
+### 3. Periodic Promotion Job
 
-S3 optimistic locking makes shared S3 LanceDB considerably more viable, especially because it now supplies Lance’s required atomic commit primitive. However, you should still retain the single-writer design for Wren because Wren’s higher-level mutation workflows are not atomic Lance transactions.
+A scheduled job lists the pending candidate objects and proposes Git changes based on the discovery type:
+
+* **SQL Example (`knowledge/sql/*.md`):** A commonly requested query or complex join pattern that repeatedly succeeds.
+* **Business Rule (`knowledge/rules/*.md`):** Explicit clarifications (e.g., "cancelled orders do not count toward revenue").
+
+Once the PR is merged, the next production deployment executes `wren memory index`. Every Wren instance rebuilds its read-only LanceDB cache from the central truth, and instantly begins benefiting from the newly approved queries via `recall_queries`.
 
 ---
 
