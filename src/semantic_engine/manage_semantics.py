@@ -195,7 +195,7 @@ def init_project():
 
     # Write example knowledge rules
     with open(f"{PROJECT_DIR}/knowledge/rules/business_definitions.md", "w") as f:
-        f.write("# Business Definitions\n\n## Active Customers\nAn active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n")
+        f.write("# Business Definitions\n\n## Active Customers\nAn active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n\n## Returned Items\nWhen the user asks about returned 'items' or the quantity of returned items, they ALWAYS mean the `order_items` table where `is_returned = true`. Do NOT use the `returned_orders` table for this.\n\n## Sold Products\nWhen analyzing products 'sold', you MUST join the `orders` table and exclude orders where `status = 'cancelled'`. A product is only considered sold if the parent order is not cancelled.\n\n## Profit and Cost\nThere is NO cost data in the database. Any requests for 'profit', 'profit margin', or 'cost' must be gracefully refused. Do NOT attempt to calculate profit from `price`.\n")
     
     with open(f"{PROJECT_DIR}/knowledge/sql/top_customers.md", "w") as f:
         f.write("---\nnl: Who are our top 5 customers?\nsql: |\n  SELECT first_name, last_name, lifetime_spend\n  FROM customer_lifetime_value\n  ORDER BY lifetime_spend DESC\n  LIMIT 5\ndatasource: trino\nsource: user\n---\n")
@@ -327,25 +327,23 @@ def list_models():
                 logger.info(f"  - {f}")
 
 def seed_knowledge():
-    """Seeds the Golden SQL knowledge for ambiguity resolution."""
-    logger.info("🌱 Seeding Golden SQL knowledge for ambiguity resolution...")
-    knowledge_dir = os.path.join(PROJECT_DIR, "knowledge", "sql")
-    os.makedirs(knowledge_dir, exist_ok=True)
-    refunds_file = os.path.join(knowledge_dir, "refunds_by_status.md")
+    """Seeds the business definitions knowledge for ambiguity resolution."""
+    logger.info("🌱 Seeding Business Definitions for ambiguity resolution...")
+    rules_dir = os.path.join(PROJECT_DIR, "knowledge", "rules")
+    os.makedirs(rules_dir, exist_ok=True)
+    business_defs_file = os.path.join(rules_dir, "business_definitions.md")
     
-    content = """---
-nl: Show me all refunded amount of orders by status.
-sql: |
-  SELECT return_status, SUM(refund_amount) AS total_refunded
-  FROM returned_orders
-  GROUP BY return_status
-datasource: trino
-source: user
----
-"""
-    with open(refunds_file, "w") as f:
-        f.write(content)
-    logger.info(f"✅ Created {refunds_file}")
+    content = "\n\n## Refunds by Status\nWhen the user asks for 'refunded amount by status' or 'refunds by status', they ALWAYS mean the `return_status` column from the `returned_orders` table. NEVER use the `status` column from the `orders` table for this metric.\n"
+    
+    # Check if the rule is already there to avoid duplicate appends on multiple refresh runs
+    with open(business_defs_file, "a+") as f:
+        f.seek(0)
+        existing_content = f.read()
+        if "Refunds by Status" not in existing_content:
+            f.write(content)
+            logger.info(f"✅ Appended to {business_defs_file}")
+        else:
+            logger.info(f"⏭️  Business rule already exists in {business_defs_file}")
 
 def build_context():
     """Compiles the WrenAI semantic context into the mdl.json manifest."""
