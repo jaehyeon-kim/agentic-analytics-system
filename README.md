@@ -664,3 +664,15 @@ Evaluation failures typically group into one of three common categories. Here is
 *   **How to resolve:**
     *   *Increase Invocation Limits:* If the retrieved schema context is large, the cumulative token count of the multi-turn validation chain can exceed limits. Ensure the `total_tokens` cap in `limits` is set high enough (e.g., `50_000` tokens) to accommodate history and schema definitions.
     *   *Graceful Refusal Prompting:* If the query fails because a requested field (e.g., `return_reason`) does not exist, check the system prompt. Make sure the agent is instructed to output an explicit, human-readable refusal (e.g., *"The return reason is not available in the schema"*) rather than terminating with a blank text response.
+
+---
+
+## Discarding the Environment
+
+To tear down the local analytics infrastructure and completely wipe all container data and Docker volumes, run:
+
+```bash
+odctl down --all -v
+```
+
+This will stop all active container profiles (Trino, Valkey, Postgres, SeaweedFS) and cleanly delete their associated volumes.
