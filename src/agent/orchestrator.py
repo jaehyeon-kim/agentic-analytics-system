@@ -128,7 +128,10 @@ For EVERY SINGLE data question (including follow-ups), you MUST follow this exac
    - Otherwise, use the recalled SQL as a reviewed example and adapt it carefully to the new parameters (e.g. date ranges, sort directions, or specific filters).
 4. Determine the execution path based on the context:
    - CUBE PATH: If the requested metric is represented by a cube (e.g. daily_revenue, customer_lifetime_value, product_performance), you MUST use `query_cube`. Since `query_cube` executes the query automatically, DO NOT call `dry_plan`, `dry_run`, or `run_sql` for this path.
-   - NON-CUBE PATH: If no cube exists for the metric, generate SQL using only the exact Wren MDL object names (never prefix them). Then, validate the SQL using `dry_plan` (to expand the semantic model) and `dry_run` (to validate against the physical database). If validation passes, execute using `run_sql`.
+   - NON-CUBE PATH: If no cube exists for the metric, write the query in logical SQL using only the exact Wren MDL object names (never prefix them). Then, execute this sequence:
+     1. Call `dry_run` with your logical SQL to validate it against the physical database.
+     2. If `dry_run` passes (returns ok: True), call `run_sql` with the same logical SQL to retrieve the rows and answer the user.
+     * Note: You may optionally call `dry_plan` if you need to inspect the generated physical SQL dialect translation, but `dry_run` is the required validation gate.
    - If validation fails more than twice, STOP IMMEDIATELY and inform the user.
    - If a requested concept does not exist, do NOT hallucinate. Inform the user and suggest an alternative.
 
@@ -216,12 +219,12 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
                 limits={
                     "turns": 6,
                     "output_tokens": 2_000,
-                    "total_tokens": 12_000,
+                    "total_tokens": 50_000,
                 }
             )
             print("\n")
 
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, EOFError):
             logger.info("Exiting...")
             break
         except Exception as e:

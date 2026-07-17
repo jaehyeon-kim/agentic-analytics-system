@@ -121,7 +121,8 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
 
 ## Prerequisites
 
-Install [uv](https://docs.astral.sh/uv/getting-started/installation/), then create and activate a local virtual environment using Python 3.12, and install the required dependencies (which includes the `odctl` orchestrator). Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support does not yet provide wheels for Python 3.13+.
+*   Install **[Docker](https://docs.docker.com/get-docker/)** (with compose support) to run the containerized local data infrastructure.
+*   Install **[uv](https://docs.astral.sh/uv/getting-started/installation/)**, then create and activate a local virtual environment using Python 3.12, and install the required dependencies (which includes the `odctl` orchestrator). Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support does not yet provide wheels for Python 3.13+.
 
 ```bash
 uv python install 3.12
@@ -411,6 +412,9 @@ wren memory fetch \
 
 ## Agentic Orchestrator
 
+> [!NOTE]
+> The examples and outputs demonstrated in this section were generated using the **`gemini-3.1-flash-lite`** model. If you use a different LLM or provider (such as Claude 3.5 Sonnet on Bedrock), the exact query formatting and responses may vary slightly.
+
 In this section, you will bring the AI orchestrator to life by connecting it to your data lakehouse using the Model Context Protocol (MCP).
 
 ### Objectives
@@ -580,7 +584,7 @@ For example, if you ask the agent without memory enabled:
 
 **What happens WITHOUT memory?**
 Because the concept of "high-value" is not defined anywhere in the WrenAI schema, and LLMs are probabilistic, the agent will handle this ambiguity unpredictably. Rather than safely blocking the query, it will often arbitrarily invent a definition on the fly! For example, it might decide on its own that "high-value" means greater than $1,000:
-> `Agent ❯ There were 574 high-value orders (defined as orders with a total amount greater than 1,000) placed yesterday.`
+> `Agent ❯ There were 574 high-value orders (defined as orders with a total amount greater than 500) placed yesterday.`
 
 While this might seem helpful, it is extremely dangerous in an enterprise setting. The agent confidently returned an arbitrary business metric that does not match your internal reporting rules, but remained consistent about its arbitrary choice across multiple questions.
 
@@ -590,12 +594,12 @@ While permanently adding rules to `knowledge/rules` or creating a new Cube in th
 By booting the orchestrator with the memory flag enabled (`python src/agent/orchestrator.py --use-memory`), we inject the `save_user_preference_to_memory` and `search_memory` tools into the agent's prompt.
 
 This allows you to explicitly teach the agent your organization's business rules once:
-> `User ❯ Assume that when I say 'high-value orders', I am referring strictly to orders with a total amount greater than $500.`
+> `User ❯ Assume that when I say 'high-value orders', I am referring strictly to orders with a total amount greater than $1,000.`
 
 **What happens WITH memory?**
 1. **Immediate Storage**: The agent bypasses the semantic schema completely and immediately invokes the memory tool. The rule is permanently saved into the `odctl` Valkey instance.
 2. **Contextual Retrieval**: The next time you ask *"How many high-value orders do we have yesterday?"*, the agent queries Mem0 first. It retrieves your exact definition.
-3. **Consistent Execution**: The agent applies the proper filter to the `orders` table (`total_amount > 500`), returning a consistent metric aligned with your rules:
+3. **Consistent Execution**: The agent applies the proper filter to the `orders` table (`total_amount > 1000`), returning a consistent metric aligned with your rules:
 > `Agent ❯ There were 777 high-value orders (orders with a total amount greater than $500) yesterday.`
 
 This memory architecture allows the AI to adapt to your company's unique jargon and business definitions without requiring you to manually update the underlying semantic model for every localized colloquialism.
@@ -636,3 +640,27 @@ python evaluations/evaluate_semantics.py --limit 3
 python evaluations/evaluate_semantics.py --use-api-key
 ```
 Results, including the agent's full response and the judge's reasoning, are automatically saved to `evaluations/evaluation_results.json`.
+
+### Analyzing & Troubleshooting Failures
+
+When running the evaluation suite, you will see some test cases fail. LLMs are probabilistic, and output consistency can vary depending on the chosen model (e.g., `gemini-3.1-flash-lite` vs. `Claude 3.5 Sonnet`). 
+
+Evaluation failures typically group into one of three common categories. Here is how to diagnose and resolve them:
+
+#### 1. Routing Failures (Agent uses `run_sql` instead of `query_cube`)
+*   **Symptom:** The agent writes custom logical SQL to calculate a metric (e.g., daily gross revenue or best-selling product) instead of calling `query_cube` with the predefined cubes (`daily_revenue`, `product_performance`).
+*   **How to resolve:**
+    *   *Enrich MDL Descriptions:* Open the cube YAML definitions and add detailed, keyword-rich descriptions to the measures and dimensions (e.g., explicitly mentioning terms like "gross sales", "revenue", and "units sold" inside the descriptions). This helps the RAG search (`get_context`) match them to natural language questions.
+    *   *Seed Golden Queries:* Add direct natural-language-to-cube examples in `knowledge/sql/` to train the semantic search on how to query cubes correctly.
+
+#### 2. SQL Logic & Business Rule Mismatches
+*   **Symptom:** The agent executes a valid query, but the logic differs from the evaluation expectations (e.g., using `SUM(quantity)` instead of `COUNT(*)` to count returned items, or applying a custom `status != 'cancelled'` filter when the evaluation expected a simple unfiltered table scan).
+*   **How to resolve:**
+    *   *Standardize Patterns in `knowledge/sql/`:* Add reference examples in `knowledge/sql/` showing the preferred join paths, filter priorities, and aggregation syntax.
+    *   *Refine Rule Scope in `knowledge/rules/`:* Make sure your markdown rules explicitly state whether constraints (like excluding cancelled orders) apply strictly to sales metrics or universally to all query contexts.
+
+#### 3. Silent Aborts & Empty Responses
+*   **Symptom:** The agent completes its run but returns a blank response, or stops immediately after the `dry_run` or `dry_plan` validation steps.
+*   **How to resolve:**
+    *   *Increase Invocation Limits:* If the retrieved schema context is large, the cumulative token count of the multi-turn validation chain can exceed limits. Ensure the `total_tokens` cap in `limits` is set high enough (e.g., `50_000` tokens) to accommodate history and schema definitions.
+    *   *Graceful Refusal Prompting:* If the query fails because a requested field (e.g., `return_reason`) does not exist, check the system prompt. Make sure the agent is instructed to output an explicit, human-readable refusal (e.g., *"The return reason is not available in the schema"*) rather than terminating with a blank text response.
