@@ -169,8 +169,13 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
             }
             mem0_client = Memory.from_config(mem0_config)
 
+            _saved_preferences = set()
+            
             @tool(description="MANDATORY: Call this tool IMMEDIATELY when the user states a rule, preference, or instruction for future queries (e.g., 'I always want...', 'Never do...'). Do not validate the schema first.")
             def save_user_preference_to_memory(preference: str) -> str:
+                if preference in _saved_preferences:
+                    return f"Preference already saved (duplicate skipped): {preference}"
+                _saved_preferences.add(preference)
                 mem0_client.add(preference, user_id="user")
                 return f"Successfully saved preference: {preference}"
                 
