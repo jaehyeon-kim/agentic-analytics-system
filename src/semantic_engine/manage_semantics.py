@@ -90,7 +90,7 @@ CUBES = {
         "base_object": "orders",
         "description": "Daily aggregated revenue metrics based on the order creation date.",
         "time_dimensions": [
-            {"name": "order_date", "expression": "created_at", "type": "TIMESTAMP"}
+            {"name": "order_date", "expression": "CAST(created_at AS DATE)", "type": "DATE"}
         ],
         "dimensions": [
             {"name": "status", "expression": "status", "type": "VARCHAR"}
@@ -116,7 +116,9 @@ CUBES = {
         "base_object": "order_items",
         "description": "Aggregated product sales performance.",
         "dimensions": [
-            {"name": "product_id", "expression": "product_id", "type": "INTEGER"}
+            {"name": "product_id", "expression": "product_id", "type": "INTEGER"},
+            {"name": "category", "expression": "products_to_order_items.category", "type": "VARCHAR"},
+            {"name": "product_name", "expression": "products_to_order_items.product_name", "type": "VARCHAR"}
         ],
         "measures": [
             {"name": "units_sold", "expression": "SUM(quantity)", "type": "BIGINT"},
@@ -195,7 +197,22 @@ def init_project():
 
     # Write example knowledge rules
     with open(f"{PROJECT_DIR}/knowledge/rules/business_definitions.md", "w") as f:
-        f.write("# Business Definitions\n\n## Active Customers\nAn active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n\n## Returned Items\nWhen the user asks about returned 'items' or the quantity of returned items, they ALWAYS mean the `order_items` table where `is_returned = true`. Do NOT use the `returned_orders` table for this.\n\n## Sold Products\nWhen analyzing products 'sold', you MUST join the `orders` table and exclude orders where `status = 'cancelled'`. A product is only considered sold if the parent order is not cancelled.\n\n## Profit and Cost\nThere is NO cost data in the database. Any requests for 'profit', 'profit margin', or 'cost' must be gracefully refused. Do NOT attempt to calculate profit from `price`.\n")
+        f.write("# Business Definitions\n\n"
+                "## Active Customers\n"
+                "An active customer is strictly defined as a user who has placed at least one order that has a status of `delivered`. Do not count customers with only `cancelled` orders as active.\n\n"
+                "## Returned Items\n"
+                "When the user asks about returned 'items' or the count/number of returned items, they ALWAYS mean counting the rows of the `order_items` table where `is_returned = true` (i.e. `COUNT(*)`). Do NOT use `SUM(quantity)` unless the user specifically asks for the 'quantity' of returned items. Do NOT use the `returned_orders` table for returned items.\n\n"
+                "## Sold Products\n"
+                "When analyzing products 'sold' (using the word 'sold' or 'sales'), you MUST join the `orders` table and exclude orders where `status = 'cancelled'`. A product is only considered sold if the parent order is not cancelled.\n"
+                "Exceptions:\n"
+                "- If the user asks for products 'ordered' (using the word 'ordered' or 'orders'), do NOT filter out cancelled orders.\n"
+                "- If the user asks for products that have 'never' been sold, simply find products with no entries in the `order_items` table (i.e. do NOT join the `orders` table or check statuses).\n\n"
+                "## Counting Orders\n"
+                "When counting or analyzing 'orders' in general, do NOT filter out cancelled orders unless the user explicitly requests to exclude them or asks for 'active' or 'delivered' orders.\n\n"
+                "## Profit and Cost\n"
+                "There is NO cost data in the database. Any requests for 'profit', 'profit margin', or 'cost' must be gracefully refused. Do NOT attempt to calculate profit from `price`.\n\n"
+                "## Unavailable Data\n"
+                "- Return Reasons: We do NOT track the reason why an order was returned (there is no 'return_reason' or similar column in `returned_orders` or any other table). Do NOT use `return_status` as the reason. If the user asks for return reasons, you must gracefully refuse.\n")
     
     with open(f"{PROJECT_DIR}/knowledge/sql/top_customers.md", "w") as f:
         f.write("---\nnl: Who are our top 5 customers?\nsql: |\n  SELECT first_name, last_name, lifetime_spend\n  FROM customer_lifetime_value\n  ORDER BY lifetime_spend DESC\n  LIMIT 5\ndatasource: trino\nsource: user\n---\n")

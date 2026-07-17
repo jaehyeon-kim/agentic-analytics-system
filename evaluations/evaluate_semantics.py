@@ -21,12 +21,21 @@ def load_test_suite(filepath: str) -> List[Dict[str, Any]]:
     with open(filepath, "r") as f:
         return json.load(f)
 
-async def evaluate_suite(suite_path: str, use_api_key: bool, limit: int = None):
+async def evaluate_suite(suite_path: str, use_api_key: bool, limit: int = None, test_ids: list = None):
     logger.info("🚀 Starting Agentic Semantic Evaluation Harness")
-    tests = load_test_suite(suite_path)
+    all_tests = load_test_suite(suite_path)
     
-    if limit is not None and limit > 0:
-        tests = tests[:limit]
+    # Assign 1-based IDs to all tests
+    for idx, t in enumerate(all_tests, 1):
+        t["_id"] = idx
+    
+    if test_ids:
+        tests = [t for t in all_tests if t["_id"] in test_ids]
+        logger.info(f"Running {len(tests)} selected tests (IDs: {test_ids}) out of {len(all_tests)} total.")
+    elif limit is not None and limit > 0:
+        tests = all_tests[:limit]
+    else:
+        tests = all_tests
         
     total = len(tests)
     logger.info(f"Loaded {total} golden test cases.")
@@ -68,13 +77,14 @@ For EVERY SINGLE data question (including follow-ups), you MUST follow this exac
    - If the user's question has an exact normalized intent and identical parameters to a recalled example, you may execute its `sql_query` VERBATIM using `run_sql`.
    - Otherwise, use the recalled SQL as a reviewed example and adapt it carefully to the new parameters (e.g. date ranges, sort directions, or specific filters).
 4. Determine the execution path based on the context:
-   - CUBE PATH: If the requested metric is represented by a cube (e.g. daily_revenue, customer_lifetime_value, product_performance), you MUST use `query_cube`. Since `query_cube` executes the query automatically, DO NOT call `dry_plan`, `dry_run`, or `run_sql` for this path.
-   - NON-CUBE PATH: If no cube exists for the metric, write the query in logical SQL using only the exact Wren MDL object names (never prefix them). Then, execute this sequence:
-     1. Call `dry_run` with your logical SQL to validate it against the physical database.
-     2. If `dry_run` passes (returns ok: True), call `run_sql` with the same logical SQL to retrieve the rows and answer the user.
-     * Note: You may optionally call `dry_plan` if you need to inspect the generated physical SQL dialect translation, but `dry_run` is the required validation gate.
-   - If validation fails more than twice, STOP IMMEDIATELY and inform the user.
-   - If a requested concept does not exist, do NOT hallucinate. Inform the user and suggest an alternative.
+    - CUBE PATH (PREFERRED): If the requested metric maps to a cube measure (e.g. daily_revenue.gross_revenue, customer_lifetime_value.lifetime_spend, product_performance.units_sold), you MUST use `query_cube` FIRST. This is ALWAYS your first choice when a cube covers the question. Since `query_cube` executes the query automatically, DO NOT call `dry_plan`, `dry_run`, or `run_sql` for this path.
+      * KNOWN LIMITATION: On Trino, cube queries with time dimension filters (e.g. "yesterday", "last 7 days") may fail with a TYPE_MISMATCH error due to Trino not implicitly casting between TIMESTAMP and VARCHAR. If `query_cube` fails with a type mismatch error, you may fall back to `run_sql` with equivalent logical SQL.
+    - NON-CUBE PATH: If no cube exists for the metric, write the query in logical SQL using only the exact Wren MDL object names (never prefix them). Then, execute this sequence:
+      1. Call `dry_run` with your logical SQL to validate it against the physical database.
+      2. If `dry_run` passes (returns ok: True), call `run_sql` with the same logical SQL to retrieve the rows and answer the user.
+      * Note: You may optionally call `dry_plan` if you need to inspect the generated physical SQL dialect translation, but `dry_run` is the required validation gate.
+    - If validation fails more than twice, STOP IMMEDIATELY and inform the user.
+    - If a requested concept does not exist, do NOT hallucinate. Inform the user and suggest an alternative.
 
 CRITICAL: Do not bypass `get_context` and `recall_queries` for analytical questions. Memory retrieval is mandatory. Even if you think you remember the schema from a previous turn, YOU MUST call `recall_queries` for EVERY new user query. NO EXCEPTIONS. 
 
@@ -88,11 +98,12 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
     print("="*50 + "\n")
 
     for i, test in enumerate(tests, 1):
-        print(f"Test {i}/{total} | Category: {test['category']}")
+        test_id = test.get("_id", i)
+        print(f"Test {test_id}/{len(all_tests)} | Category: {test['category']}")
         print(f"Question: {test['question']}")
         
         result_record = {
-            "test_id": i,
+            "test_id": test_id,
             "category": test["category"],
             "question": test["question"],
             "status": "UNKNOWN",
@@ -112,7 +123,7 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
             response = await test_agent.invoke_async(
                 test["question"],
                 limits={
-                    "turns": 6,
+                    "turns": 10,
                     "output_tokens": 2_000,
                     "total_tokens": 50_000,
                 }
@@ -194,8 +205,10 @@ if __name__ == "__main__":
     parser.add_argument("--suite", default="evaluations/golden_test_suite.json", help="Path to golden test suite JSON")
     parser.add_argument("--use-api-key", action="store_true", default=False, help="Use API key instead of Bedrock")
     parser.add_argument("--limit", type=int, default=None, help="Maximum number of tests to run (default: all)")
+    parser.add_argument("--tests", type=str, default=None, help="Comma-separated list of test IDs to run (e.g. '2,4,5,6')")
     args = parser.parse_args()
     
     load_dotenv(os.path.join(os.path.dirname(__file__), "..", "src", "agent", ".env"))
     
-    asyncio.run(evaluate_suite(args.suite, args.use_api_key, args.limit))
+    test_ids = [int(x.strip()) for x in args.tests.split(",")] if args.tests else None
+    asyncio.run(evaluate_suite(args.suite, args.use_api_key, args.limit, test_ids))

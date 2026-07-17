@@ -633,6 +633,9 @@ For each test case, the script spins up an isolated orchestrator agent, captures
 # Run the full 20-case test suite
 python evaluations/evaluate_semantics.py
 
+# Optional: Re-run only specific test cases by ID (comma-separated)
+python evaluations/evaluate_semantics.py --tests 2,4,5,6
+
 # Optional: Run only a subset of tests for quick smoke-testing
 python evaluations/evaluate_semantics.py --limit 3
 
@@ -649,7 +652,8 @@ Evaluation failures typically group into one of three common categories. Here is
 
 #### 1. Routing Failures (Agent uses `run_sql` instead of `query_cube`)
 *   **Symptom:** The agent writes custom logical SQL to calculate a metric (e.g., daily gross revenue or best-selling product) instead of calling `query_cube` with the predefined cubes (`daily_revenue`, `product_performance`).
-*   **How to resolve:**
+*   **Known Limitation — Trino Type Mismatch:** Cube queries that include time-dimension filters (e.g., "yesterday", "last 7 days") will fail on Trino with a `TYPE_MISMATCH` error because Wren's compiled SQL compares `TIMESTAMP(6)` to `VARCHAR` string literals, and Trino does not support implicit casting between these types. In these cases, the agent is expected to attempt `query_cube` first, observe the failure, and then fall back to `run_sql` with equivalent logical SQL. The golden test suite marks these tests with `"expected_tool": "query_cube|run_sql"` to accept either tool.
+*   **How to resolve (non-time-dimension routing):**
     *   *Enrich MDL Descriptions:* Open the cube YAML definitions and add detailed, keyword-rich descriptions to the measures and dimensions (e.g., explicitly mentioning terms like "gross sales", "revenue", and "units sold" inside the descriptions). This helps the RAG search (`get_context`) match them to natural language questions.
     *   *Seed Golden Queries:* Add direct natural-language-to-cube examples in `knowledge/sql/` to train the semantic search on how to query cubes correctly.
 
@@ -662,7 +666,8 @@ Evaluation failures typically group into one of three common categories. Here is
 #### 3. Silent Aborts & Empty Responses
 *   **Symptom:** The agent completes its run but returns a blank response, or stops immediately after the `dry_run` or `dry_plan` validation steps.
 *   **How to resolve:**
-    *   *Increase Invocation Limits:* If the retrieved schema context is large, the cumulative token count of the multi-turn validation chain can exceed limits. Ensure the `total_tokens` cap in `limits` is set high enough (e.g., `50_000` tokens) to accommodate history and schema definitions.
+    *   *Increase Turn Budget:* The agent's multi-step workflow (memory retrieval → cube query → fallback SQL → text response) can consume many turns. If the `turns` limit in the agent's `limits` config is too low (e.g., `6`), the Strands event loop may exit before the agent can generate its final text response. Increase the turn budget (e.g., `"turns": 10`) to accommodate fallback paths.
+    *   *Increase Token Limits:* If the retrieved schema context is large, the cumulative token count of the multi-turn validation chain can exceed limits. Ensure the `total_tokens` cap in `limits` is set high enough (e.g., `50_000` tokens) to accommodate history and schema definitions.
     *   *Graceful Refusal Prompting:* If the query fails because a requested field (e.g., `return_reason`) does not exist, check the system prompt. Make sure the agent is instructed to output an explicit, human-readable refusal (e.g., *"The return reason is not available in the schema"*) rather than terminating with a blank text response.
 
 ---

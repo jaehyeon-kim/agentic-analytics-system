@@ -127,13 +127,14 @@ For EVERY SINGLE data question (including follow-ups), you MUST follow this exac
    - If the user's question has an exact normalized intent and identical parameters to a recalled example, you may execute its `sql_query` VERBATIM using `run_sql`.
    - Otherwise, use the recalled SQL as a reviewed example and adapt it carefully to the new parameters (e.g. date ranges, sort directions, or specific filters).
 4. Determine the execution path based on the context:
-   - CUBE PATH: If the requested metric is represented by a cube (e.g. daily_revenue, customer_lifetime_value, product_performance), you MUST use `query_cube`. Since `query_cube` executes the query automatically, DO NOT call `dry_plan`, `dry_run`, or `run_sql` for this path.
-   - NON-CUBE PATH: If no cube exists for the metric, write the query in logical SQL using only the exact Wren MDL object names (never prefix them). Then, execute this sequence:
-     1. Call `dry_run` with your logical SQL to validate it against the physical database.
-     2. If `dry_run` passes (returns ok: True), call `run_sql` with the same logical SQL to retrieve the rows and answer the user.
-     * Note: You may optionally call `dry_plan` if you need to inspect the generated physical SQL dialect translation, but `dry_run` is the required validation gate.
-   - If validation fails more than twice, STOP IMMEDIATELY and inform the user.
-   - If a requested concept does not exist, do NOT hallucinate. Inform the user and suggest an alternative.
+    - CUBE PATH (PREFERRED): If the requested metric maps to a cube measure (e.g. daily_revenue.gross_revenue, customer_lifetime_value.lifetime_spend, product_performance.units_sold), you MUST use `query_cube` FIRST. This is ALWAYS your first choice when a cube covers the question. Since `query_cube` executes the query automatically, DO NOT call `dry_plan`, `dry_run`, or `run_sql` for this path.
+      * KNOWN LIMITATION: On Trino, cube queries with time dimension filters (e.g. "yesterday", "last 7 days") may fail with a TYPE_MISMATCH error due to Trino not implicitly casting between TIMESTAMP and VARCHAR. If `query_cube` fails with a type mismatch error, you may fall back to `run_sql` with equivalent logical SQL.
+    - NON-CUBE PATH: If no cube exists for the metric, write the query in logical SQL using only the exact Wren MDL object names (never prefix them). Then, execute this sequence:
+      1. Call `dry_run` with your logical SQL to validate it against the physical database.
+      2. If `dry_run` passes (returns ok: True), call `run_sql` with the same logical SQL to retrieve the rows and answer the user.
+      * Note: You may optionally call `dry_plan` if you need to inspect the generated physical SQL dialect translation, but `dry_run` is the required validation gate.
+    - If validation fails more than twice, STOP IMMEDIATELY and inform the user.
+    - If a requested concept does not exist, do NOT hallucinate. Inform the user and suggest an alternative.
 
 CRITICAL: Do not bypass `get_context` and `recall_queries` for analytical questions. Memory retrieval is mandatory. Even if you think you remember the schema from a previous turn, YOU MUST call `recall_queries` for EVERY new user query. NO EXCEPTIONS.
 
@@ -217,7 +218,7 @@ EVALUATION REQUIREMENT: Even if a query returns zero results, you MUST explicitl
             await agent.invoke_async(
                 user_input,
                 limits={
-                    "turns": 6,
+                    "turns": 10,
                     "output_tokens": 2_000,
                     "total_tokens": 50_000,
                 }
