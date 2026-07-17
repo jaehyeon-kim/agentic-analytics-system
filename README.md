@@ -25,16 +25,14 @@ Building a reliable data assistant requires more than generating valid SQL. It m
 
 1. Structured MDL models, relationships, views, calculated fields, and cubes.
 2. Stronger control over business definitions, relationships, and metrics.
-3. Deterministic SQL expansion from logical semantic queries.
-4. Support for a wide range of popular data sources, including Trino and ClickHouse.
-5. Direct modeling of existing tables, views, and materialized objects.
-6. File-based definitions that can be reviewed and versioned in Git.
-7. Separate business rules and reviewed natural-language-to-SQL examples.
-8. Native MCP tools for integration with Strands.
-9. A local, rebuildable LanceDB retrieval index.
-10. Clear separation between Strands orchestration and WrenAI semantic execution.
+3. SQL generation without execution, allowing Strands to enforce tenant-aware authorization, validation, security policies, and controlled execution.
+4. Greater flexibility to introduce enterprise security and governance controls around the semantic layer.
+5. Deterministic expansion of logical semantic queries into physical SQL.
+6. Support for a wide range of popular data sources, including Trino and ClickHouse.
+7. Direct modeling of existing tables, views, and materialized objects.
+8. Version-controlled definitions, separate business rules, reviewed SQL examples, native MCP tools, and a rebuildable LanceDB index.
 
-WrenAI was selected because this project prioritises formal semantic governance and controlled SQL generation. Nao provides a broader and more integrated platform, but its flexible context model offers weaker enforcement of business meaning. Vanna lacks the required semantic modeling and native support for several relevant data sources, while MetricFlow is more closely tied to dbt-oriented metric management.
+WrenAI was selected because this project prioritises formal semantic governance and a clear separation between SQL generation and execution. This separation makes it easier to adapt the architecture for enterprise requirements such as tenant isolation, authorization, validation, and audit controls. Nao provides a broader integrated platform, but its flexible context model and end-to-end open-source workflow make these enforcement boundaries less explicit and more difficult to customise. Vanna lacks the required semantic modeling and native support for several relevant data sources, while MetricFlow is more closely aligned with dbt-oriented metric management.
 
 ## Table of Contents
 
