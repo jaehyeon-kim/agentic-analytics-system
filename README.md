@@ -48,36 +48,7 @@ WrenAI was selected because this project prioritises formal semantic governance 
 
 This system relies on a fully decoupled, open-source stack. The AI orchestrator interprets requests and uses the Model Context Protocol (MCP) to interact with the Semantic Engine. The Semantic Engine plans deterministic queries using its business models and vector memory, which are then executed against the physical Lakehouse storage layer.
 
-```text
-+-------------------+       +-----------------------+
-|                   |       |                       |
-|   User Request    | ----> |  Agent Orchestrator   |
-|                   |       |  (Strands SDK)        |
-+-------------------+       +-----------------------+
-                                  |           |
-                                  |           v
-                                  |     +-------------------+
-                                  |     |   Agent Memory    |
-                                  |     |   (Mem0 v3)       |
-                                  |     +-------------------+
-                                  |           |
-                                  |           v
-                                  |     +-----------------------+
-                                  |     |   Agent Vector DB     |
-                                  |     |       (Valkey)        |
-                                  |     +-----------------------+
-                                  v
-                            +-----------------------+
-                            |   Semantic Engine     |
-                            |       (WrenAI)        |
-                            +-----------------------+
-                               |                 |
-                               v                 v
-            +-----------------------+   +-------------------------------+
-            |    Historical Data    |   |    Semantic Retrieval Index   |
-            |   (Trino / Iceberg)   |   |        (Local LanceDB)        |
-            +-----------------------+   +-------------------------------+
-```
+![Agentic Analytics System architecture: a Strands orchestrator coordinates the WrenAI semantic engine, LanceDB retrieval, and Mem0 memory over MCP, with governed queries executing against Trino, Apache Iceberg, and SeaweedFS.](images/architecture.png)
 
 ### Component Breakdown
 
@@ -85,7 +56,7 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
 |:---|:---|:---|
 | **Agent Orchestrator** | [Strands SDK](https://github.com/strands-agents/sdk-python) | Autonomous AI agent framework (by AWS) that interprets natural language, plans multi-step tool calls, and coordinates the entire query pipeline via the Model Context Protocol (MCP). |
 | **Semantic Engine** | [WrenAI](https://github.com/Canner/WrenAI) | Governed semantic query compiler. Defines business logic as code using the Modeling Definition Language (MDL), plans physical SQL deterministically, and validates queries via `dry_plan` - preventing LLM hallucinations. |
-| **Semantic Retrieval Index** | LanceDB (embedded) | Local vector database for RAG-based table discovery. Embeds MDL schema descriptions so the agent can retrieve only the relevant tables for a given question. |
+| **Semantic Retrieval Index** | LanceDB (embedded) | Local vector database for RAG. Embeds MDL schema descriptions and approved SQL examples, so the agent can retrieve both the relevant tables and proven query patterns for a given question. |
 | **Agent Memory** | Mem0 v3 over Valkey | Persistent user and conversational memory using hybrid retrieval across semantic similarity, keyword matching and built-in entity linking. Mem0 stores entity embeddings in a parallel Valkey collection and boosts memories connected through shared entities, without requiring a separate graph database. |
 | **Historical Data** | Trino / Apache Iceberg | Distributed SQL engine over open table format. The physical query execution layer for lakehouse data. |
 | **Object Storage** | SeaweedFS (S3-compatible) | Local S3-compatible storage backend for Iceberg table data and Parquet files. |
@@ -98,24 +69,7 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
 2. **Semantic Translation:** The request is sent to the semantic engine, which uses its MDL and LanceDB memory to map the request to accurate SQL.
 3. **Validation and Execution:** The orchestrator agent validates the physical schema against live metadata before executing the final SQL against the Iceberg cold storage and returning the structured data.
 
-```text
-[User Request]
-      │
-      ▼
-(1) Context Check
-[Strands Orchestrator] <---> [Mem0 / Valkey]
-      │
-      ▼
-(2) Semantic Translation
-[WrenAI MDL] <---> [Local LanceDB]
-      │
-      ▼
-(3) Execution
-[Trino / Iceberg]
-      │
-      ▼
-[Structured Data]
-```
+![Query flow: a natural-language question flows from the user through the Strands orchestrator (context check via Mem0 / Valkey) to WrenAI (semantic translation with LanceDB table and query-example retrieval), which validates and executes governed SQL against Trino / Apache Iceberg before returning structured data.](images/query-flow.png)
 
 ---
 

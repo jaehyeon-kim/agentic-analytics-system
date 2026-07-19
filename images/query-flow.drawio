@@ -1,0 +1,67 @@
+<mxfile host="65bd71144e">
+    <diagram id="agentic-analytics-query-flow" name="Page-1">
+        <mxGraphModel dx="1507" dy="711" grid="0" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="880" pageHeight="820" math="0" shadow="0">
+            <root>
+                <mxCell id="0"/>
+                <mxCell id="1" parent="0"/>
+                <mxCell id="title" value="&lt;b style=&quot;font-size: 24px;&quot;&gt;Query Flow&lt;/b&gt;&lt;br&gt;&lt;i&gt;How a natural-language question becomes governed, executed SQL&lt;/i&gt;" style="text;html=1;align=center;verticalAlign=middle;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="205" y="20" width="440" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="s1" value="&lt;b style=&quot;font-size: 16px;&quot;&gt;① Context Check&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="222" width="240" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="s2" value="&lt;b style=&quot;font-size: 16px;&quot;&gt;② Semantic Translation&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="372" width="240" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="s3" value="&lt;b style=&quot;font-size: 16px;&quot;&gt;③ Validation &amp;amp; Execution&lt;/b&gt;" style="text;html=1;align=left;verticalAlign=middle;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="40" y="522" width="240" height="30" as="geometry"/>
+                </mxCell>
+                <mxCell id="user" value="&lt;b&gt;User Request&lt;/b&gt;&lt;br&gt;&lt;i&gt;natural language&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="330" y="87" width="200" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="orch" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;Strands Orchestrator&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;i&gt;plans &amp;amp; coordinates via MCP&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#ffe6cc;strokeColor=#d79b00;strokeWidth=3;shadow=1;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="207" width="220" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="mem" value="&lt;b&gt;Mem0 / Valkey&lt;/b&gt;&lt;br&gt;&lt;i&gt;long-term context &amp;amp; preferences&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#e1d5e7;strokeColor=#9673a6;strokeWidth=2;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="600" y="212" width="220" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="wren" value="&lt;b&gt;&lt;font style=&quot;font-size: 18px;&quot;&gt;WrenAI (MDL)&lt;/font&gt;&lt;/b&gt;&lt;br&gt;&lt;i&gt;governed SQL translation&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#d5e8d4;strokeColor=#82b366;strokeWidth=3;shadow=1;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="357" width="220" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="lance" value="&lt;b&gt;LanceDB&lt;/b&gt;&lt;br&gt;&lt;i&gt;table + query-example retrieval&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="600" y="362" width="220" height="70" as="geometry"/>
+                </mxCell>
+                <mxCell id="trino" value="&lt;b&gt;Trino / Apache Iceberg&lt;/b&gt;&lt;br&gt;&lt;i&gt;validate against live metadata, then execute&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#dae8fc;strokeColor=#6c8ebf;strokeWidth=2;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="320" y="507" width="220" height="80" as="geometry"/>
+                </mxCell>
+                <mxCell id="result" value="&lt;b&gt;Structured Data&lt;/b&gt;&lt;br&gt;&lt;i&gt;answer returned to user&lt;/i&gt;" style="rounded=1;whiteSpace=wrap;html=1;sketch=1;curveFitting=1;jiggle=2;fillColor=#f5f5f5;strokeColor=#666666;strokeWidth=2;fontFamily=Comic Sans MS;" parent="1" vertex="1">
+                    <mxGeometry x="330" y="657" width="200" height="60" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_user_orch" value="question" style="edgeStyle=orthogonalEdgeStyle;rounded=0;sketch=1;html=1;strokeWidth=3;endArrow=block;strokeColor=#333333;fontFamily=Comic Sans MS;" parent="1" source="user" target="orch" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_orch_mem" value="recall / save context" style="edgeStyle=orthogonalEdgeStyle;rounded=0;sketch=1;html=1;strokeWidth=2;endArrow=block;startArrow=block;strokeColor=#9673a6;fontFamily=Comic Sans MS;" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="223" as="sourcePoint"/>
+                        <mxPoint x="600" y="223" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_orch_wren" value="via MCP" style="edgeStyle=orthogonalEdgeStyle;rounded=0;sketch=1;html=1;strokeWidth=3;endArrow=block;strokeColor=#82b366;fontFamily=Comic Sans MS;" parent="1" source="orch" target="wren" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_wren_lance" value="table + query recall (RAG)" style="edgeStyle=orthogonalEdgeStyle;rounded=0;sketch=1;html=1;strokeWidth=2;endArrow=block;startArrow=block;strokeColor=#6c8ebf;fontFamily=Comic Sans MS;" parent="1" edge="1">
+                    <mxGeometry relative="1" as="geometry">
+                        <mxPoint x="540" y="375" as="sourcePoint"/>
+                        <mxPoint x="600" y="375" as="targetPoint"/>
+                    </mxGeometry>
+                </mxCell>
+                <mxCell id="e_wren_trino" value="query_cube · run_sql" style="edgeStyle=orthogonalEdgeStyle;rounded=0;sketch=1;html=1;strokeWidth=3;endArrow=block;strokeColor=#6c8ebf;fontFamily=Comic Sans MS;" parent="1" source="wren" target="trino" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+                <mxCell id="e_trino_result" value="returns rows" style="edgeStyle=orthogonalEdgeStyle;rounded=0;sketch=1;html=1;strokeWidth=2;endArrow=block;strokeColor=#333333;fontFamily=Comic Sans MS;" parent="1" source="trino" target="result" edge="1">
+                    <mxGeometry relative="1" as="geometry"/>
+                </mxCell>
+            </root>
+        </mxGraphModel>
+    </diagram>
+</mxfile>
