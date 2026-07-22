@@ -77,6 +77,7 @@ This system relies on a fully decoupled, open-source stack. The AI orchestrator 
 
 *   Install **[Docker](https://docs.docker.com/get-docker/)** (with compose support) to run the containerized local data infrastructure.
 *   Install **[uv](https://docs.astral.sh/uv/getting-started/installation/)**, then create and activate a local virtual environment using Python 3.12, and install the required dependencies (which includes the `odctl` orchestrator). Python 3.12 is explicitly required because Mem0 v3's NLP and entity-linking support does not yet provide wheels for Python 3.13+.
+*   Download the **[spaCy](https://spacy.io/)** English model (`en_core_web_sm`). Mem0 v3's `[nlp]` extra installs the spaCy engine but no trained model, and Mem0's **entity linking** needs it to extract entities (e.g. `high-value orders`, `total_amount`) so it can boost memories sharing entities at recall time.
 
 ```bash
 uv python install 3.12
