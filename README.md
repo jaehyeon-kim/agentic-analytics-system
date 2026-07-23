@@ -489,8 +489,10 @@ Instead of relying on users to write perfect prompts, we can explicitly teach th
 
 We have a built-in `refresh` command that automatically appends a strict definition to `knowledge/rules/business_definitions.md` and then recompiles the engine:
 
+```text
 ## Refunds by Status
 When the user asks for 'refunded amount by status' or 'refunds by status', they ALWAYS mean the `return_status` column from the `returned_orders` table. NEVER use the `status` column from the `orders` table for this metric.
+```
 
 Run the following command:
 
