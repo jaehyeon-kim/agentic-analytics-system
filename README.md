@@ -445,7 +445,9 @@ Once you see `🧠 Orchestrator is online. Type 'exit' to quit.`, you can start 
 Here are three examples demonstrating how the agent dynamically routes queries:
 
 **1. Hitting a Cube (Governed Metrics)**
+
 > `User ❯ What is the revenue for orders that are delivered?`
+
 *Behavior:* The agent discovers the `daily_revenue` cube, maps "revenue" to `gross_revenue`, and queries it. The LLM does not write the `GROUP BY` or `SUM()` logic - WrenAI compiles the deterministic SQL defined in the cube.
 
 ```sql
@@ -458,7 +460,9 @@ WHERE status = 'delivered';
 When a question doesn't fit neatly into a governed cube, the agent must generate a query using the raw schema models. This introduces the challenge of ambiguity in natural language.
 
 **Case 1: Misleading Prompt**
+
 > `User ❯ Show me all refunded amount of orders by status.`
+
 *Behavior:* Because the prompt is ambiguous, the agent joins `returned_orders` to `orders` and groups by `orders.status`. Since an order must be delivered to be returned, it incorrectly aggregates everything under `delivered`.
 
 ```sql
@@ -469,7 +473,9 @@ GROUP BY o.status;
 ```
 
 **Case 2: Intended Prompt (Prompt Engineering)**
+
 > `User ❯ Show me all refunded amount of orders by return status.`
+
 *Behavior:* By explicitly specifying "return status", the agent correctly identifies that it should group by the `return_status` column inside the `returned_orders` model instead of joining to `orders`.
 
 ```sql
@@ -522,7 +528,9 @@ If you define this cube, the LLM will skip the raw schema entirely and route the
 </details>
 
 **3. Handling Missing Data Gracefully**
+
 > `User ❯ Show me all returned orders and their return reasons.`
+
 *Behavior:* The agent discovers the `returned_orders` model but realizes there is no `return_reason` column. Instead of hallucinating, it explicitly informs the user that reasons are unavailable and asks if they want to query just the return statuses instead.
 
 ### Incorporating Mem0 (Long-Term Agentic Memory)
@@ -535,6 +543,7 @@ One of the most powerful features of an autonomous agent is the ability to remem
 When an LLM is presented with an ambiguous question, it will often try to "help" by creatively guessing the business logic rather than failing.
 
 For example, if you ask the agent without memory enabled:
+
 > `User ❯ How many high-value orders do we have yesterday?`
 
 **What happens WITHOUT memory?**
