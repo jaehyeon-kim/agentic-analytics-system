@@ -575,7 +575,7 @@ During execution:
 * record Trino query IDs;
 * apply resource-group concurrency controls.
 
-Engine limits reduce the blast radius, while read-only authorization prevents data mutation.
+Engine limits bound how much data a single query can scan, while read-only authorization prevents data mutation.
 
 ## Appendix C: Failure Modes and Recovery
 

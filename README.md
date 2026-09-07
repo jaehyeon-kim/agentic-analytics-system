@@ -347,7 +347,7 @@ python src/semantic_engine/manage_semantics.py test
 The test suite should execute all queries successfully.
 
 <details>
-<summary>💡 Deep Dive: Daemon Mode & Manual RAG Fetching</summary>
+<summary>💡 In detail: Daemon Mode & Manual RAG Fetching</summary>
 
 **Dynamic Indexing (Daemon Mode):** Instead of manually re-indexing on every MDL change, you can run `wren memory watch -i 2` in the background. This daemon watches `mdl.json` and `knowledge/sql/*.md` files, automatically re-indexing LanceDB within 2 seconds of any change.
 
@@ -506,7 +506,7 @@ python src/semantic_engine/manage_semantics.py refresh
 Now, when a user asks the ambiguous **Case 1** prompt in a fresh session, the agent seamlessly reads this rule via `get_instructions`, perfectly resolving the ambiguity and executing the exact same correct SQL as **Case 2** without requiring any prompt engineering!
 
 <details>
-<summary>💡 Deep Dive: Alternatives to Rules</summary>
+<summary>💡 In detail: Alternatives to Rules</summary>
 
 **1. Is there a way to do this with examples instead of rules?**
 Yes! WrenAI allows you to provide "Golden SQL" examples in `knowledge/sql/`. The agent uses semantic similarity to recall these examples as few-shot prompts. However, for highly ambiguous conflicts (like the word "status"), LLMs often stubbornly ignore examples if they think the user explicitly demanded a specific column. Hardcoded Business Rules are universally more robust.
@@ -616,7 +616,7 @@ Evaluation failures typically group into one of three common categories. Here is
 
 #### 1. Routing Failures (Agent uses `run_sql` instead of `query_cube`)
 *   **Symptom:** The agent writes custom logical SQL to calculate a metric (e.g., daily gross revenue or best-selling product) instead of calling `query_cube` with the predefined cubes (`daily_revenue`, `product_performance`).
-*   **Known Limitation — Trino Type Mismatch:** Cube queries that include time-dimension filters (e.g., "yesterday", "last 7 days") will fail on Trino with a `TYPE_MISMATCH` error because Wren's compiled SQL compares `TIMESTAMP(6)` to `VARCHAR` string literals, and Trino does not support implicit casting between these types. In these cases, the agent is expected to attempt `query_cube` first, observe the failure, and then fall back to `run_sql` with equivalent logical SQL. The golden test suite marks these tests with `"expected_tool": "query_cube|run_sql"` to accept either tool.
+*   **Known Limitation, Trino Type Mismatch:** Cube queries that include time-dimension filters (e.g., "yesterday", "last 7 days") will fail on Trino with a `TYPE_MISMATCH` error because Wren's compiled SQL compares `TIMESTAMP(6)` to `VARCHAR` string literals, and Trino does not support implicit casting between these types. In these cases, the agent is expected to attempt `query_cube` first, observe the failure, and then fall back to `run_sql` with equivalent logical SQL. The golden test suite marks these tests with `"expected_tool": "query_cube|run_sql"` to accept either tool.
 *   **How to resolve (non-time-dimension routing):**
     *   *Enrich MDL Descriptions:* Open the cube YAML definitions and add detailed, keyword-rich descriptions to the measures and dimensions (e.g., explicitly mentioning terms like "gross sales", "revenue", and "units sold" inside the descriptions). This helps the RAG search (`get_context`) match them to natural language questions.
     *   *Seed Golden Queries:* Add direct natural-language-to-cube examples in `knowledge/sql/` to train the semantic search on how to query cubes correctly.
