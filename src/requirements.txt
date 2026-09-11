@@ -9,6 +9,8 @@ valkey>=6.0.0
 redisvl
 opentelemetry-api
 python-dotenv
-dynamic-des[parquet]
+# Pinned, not a floor, so a later dynamic-des cannot change generated data under
+# this project without the pin being lifted deliberately.
+dynamic-des[parquet]==0.12.0
 pyiceberg[s3fs]
 odctl
