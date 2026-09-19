@@ -17,7 +17,7 @@ The result is a reference implementation for semantic-layer-backed conversationa
 Building a reliable data assistant requires more than generating valid SQL. It must apply consistent business definitions, approved relationships, governed metrics, and controlled access to the underlying data model.
 
 * **[WrenAI](https://www.getwren.ai/):** A semantic engine that uses MDL to define models, relationships, views, calculated fields, and cubes as a structured, executable semantic contract. It also supports a wide range of data sources, including Trino and ClickHouse.
-* **[Vanna AI](https://vanna.ai/):** A flexible SQL-agent framework built around tools, memory, permissions, and learned query examples. It does not provide the same formal semantic modeling layer, and popular data sources such as Trino and ClickHouse would require custom database integration. Moreover, ts official open-source GitHub repository was archived on March 29, 2026.
+* **[Vanna AI](https://vanna.ai/):** A flexible SQL-agent framework built around tools, memory, permissions, and learned query examples. It does not provide the same formal semantic modeling layer, and popular data sources such as Trino and ClickHouse would require custom database integration. Moreover, its official open-source GitHub repository was archived on March 29, 2026.
 * **[Nao](https://getnao.io/):** An integrated analytics-agent platform whose Context Builder stores business definitions, rules, metadata, and query examples primarily as Markdown-based context. This is flexible, but it relies more heavily on agent interpretation and is less suitable where strict enterprise control over semantic meaning is required.
 * **[MetricFlow](https://docs.getdbt.com/docs/build/about-metricflow):** A formal semantic query engine for defining metrics, entities, dimensions, and relationships. It is closely aligned with dbt and OSI semantic models, while this project must also support objects that are not consistently represented in dbt.
 
@@ -43,6 +43,7 @@ WrenAI was selected because this project prioritises formal semantic governance 
 - [Semantic Engine](#semantic-engine)
 - [Agentic Orchestrator](#agentic-orchestrator)
 - [Testing and Evaluation](#testing-and-evaluation)
+- [Related reading](#related-reading)
 
 ## Architecture
 
@@ -438,7 +439,7 @@ python src/agent/orchestrator.py
 python src/agent/orchestrator.py --use-api-key
 ```
 
-Once you see `🧠 Orchestrator is online. Type 'exit' to quit.`, you can start asking natural language questions about your business data! The agent will autonomously connect to the WrenAI MCP server, explore the semantic schema, and generate/execute the physical SQL.
+Once you see `🧠 Orchestrator is online. Type 'exit' or 'quit' to close.`, you can start asking natural language questions about your business data! The agent will autonomously connect to the WrenAI MCP server, explore the semantic schema, and generate/execute the physical SQL.
 
 #### Example Queries
 
@@ -645,3 +646,12 @@ odctl down --all -v
 ```
 
 This will stop all active container profiles (Trino, Valkey, Postgres, SeaweedFS) and cleanly delete their associated volumes.
+
+## Related reading
+
+- [Building an Agentic Analytics System over an Iceberg Lakehouse](https://jaehyeon.me/blog/2026-07-18-agentic-analytics-system/): the post this repository accompanies, on putting a semantic layer between the language model and the lakehouse.
+- [Production Architecture & Considerations Guide](PRODUCTION_CONSIDERATIONS.md): how to scale this system securely, including running the memory layer across several concurrent agent instances.
+
+## License
+
+This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for details.
