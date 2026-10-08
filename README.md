@@ -96,7 +96,7 @@ In this section, you will build the core batch data infrastructure for the Agent
 
 ### Objectives
 
-- Use the `odctl` orchestrator to launch a local Lakehouse stack (Trino, Iceberg REST Catalog, SeaweedFS, WrenAI).
+- Use the `odctl` orchestrator to launch a local Lakehouse stack (Trino, Iceberg REST Catalog, SeaweedFS, Valkey).
 - Use `dynamic-des` to instantly generate historical datasets (customers, products, orders, order items, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
 - Ingest the raw Parquet files into the Iceberg catalog as managed tables.
 
@@ -165,7 +165,7 @@ Connect your favorite SQL client using the built-in Trino driver with these cred
 First, verify that Trino sees your Iceberg catalog and the namespace we created.
 
 ```sql
--- See all connected catalogs (you should see 'iceberg' and 'system')
+-- See all connected catalogs ('iceberg' is the one used here; 'system' and odctl's other catalogs are listed too)
 SHOW CATALOGS;
 
 -- See the databases/namespaces inside Iceberg (you should see 'ecommerce')
