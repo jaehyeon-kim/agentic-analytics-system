@@ -4,7 +4,7 @@ import os
 import random
 from datetime import timedelta
 
-from dynamic_des import ParquetStorageEgress, SimulationContext
+from desflow import ParquetStorageEgress, SimulationContext
 
 def create_ecommerce_router(base_path: str):
     """
@@ -24,7 +24,7 @@ def create_ecommerce_router(base_path: str):
         if stream_type == "event" and "value" in data and isinstance(data["value"], dict):
             nested_value = data.pop("value")
             
-            # Strip dynamic-des internal metadata columns
+            # Strip desflow internal metadata columns
             for k in ["stream_type", "sim_ts", "timestamp", "key", "path_id", "source"]:
                 data.pop(k, None)
                 
@@ -81,7 +81,7 @@ def run_simulation(args):
         .add_arrival("customer_signup", dist="exponential", rate=100.0 / 86400)
         .add_arrival("order_placement", dist="exponential", rate=1000.0 / 86400)
         .add_resource("data_generator", current_cap=1000, max_cap=1000)
-        .add_service("event_emitter", dist="deterministic", mean=0.0)
+        .add_service("event_emitter", dist="constant", value=0.0)
     )
 
     customer_pool = []

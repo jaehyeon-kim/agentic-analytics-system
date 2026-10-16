@@ -97,7 +97,7 @@ In this section, you will build the core batch data infrastructure for the Agent
 ### Objectives
 
 - Use the `odctl` orchestrator to launch a local Lakehouse stack (Trino, Iceberg REST Catalog, SeaweedFS, Valkey).
-- Use `dynamic-des` to instantly generate historical datasets (customers, products, orders, order items, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
+- Use [desflow](https://github.com/jaehyeon-kim/desflow) to instantly generate historical datasets (customers, products, orders, order items, payments, returns) and write them directly to SeaweedFS (S3) as Parquet files.
 - Ingest the raw Parquet files into the Iceberg catalog as managed tables.
 
 ### 🛠️ Step 1: Launch Infrastructure
@@ -113,7 +113,7 @@ odctl up trino storage catalog valkey
 
 ### 📊 Step 2: Generate Historical Data
 
-We use `dynamic-des`, an event simulation framework, configured with a fast-forward clock (`factor=0.0`) to instantly simulate e-commerce activity. The data is exported as flattened Parquet files directly to the SeaweedFS bucket (`s3://odctl-dev/landing`).
+We use [desflow](https://github.com/jaehyeon-kim/desflow), an event simulation framework, configured with a fast-forward clock (`factor=0.0`) to instantly simulate e-commerce activity. The data is exported as flattened Parquet files directly to the SeaweedFS bucket (`s3://odctl-dev/landing`).
 
 Run the data generator (configured for 90 days of history and 50,000 events per Parquet file):
 
